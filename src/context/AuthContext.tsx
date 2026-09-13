@@ -9,7 +9,6 @@ interface AuthContextType {
   role: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   loading: boolean;
@@ -24,7 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [hasLoggedLogin, setHasLoggedLogin] = useState(false);
 
-  // ✅ fetchRole now handles turning off the loading state
   const fetchRole = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -32,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select('role')
         .eq('id', userId)
         .single();
-      
+
       if (error) throw error;
       setRole(data?.role || 'student');
     } catch (err) {
@@ -58,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (_event, currentSession) => {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
-        
+
         if (currentSession?.user) {
           setLoading(true);
           fetchRole(currentSession.user.id);
@@ -72,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
-      
+
       if (initialSession?.user) {
         setLoading(true);
         fetchRole(initialSession.user.id);
@@ -92,9 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
-  // ✅ UPDATED: Verify the email exists in the students table before allowing sign up
+  // Verify the email exists in students table before allowing sign up
   const signUp = async (email: string, password: string) => {
-    // STEP 1: Check if this email exists in the students table
     const { data: studentRecord, error: checkError } = await supabase
       .from('students')
       .select('id, email')
@@ -107,7 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    // STEP 2: Email is verified, create the Auth account
     const { error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -117,16 +113,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (authError) throw authError;
-  };
-
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
-    if (error) throw error;
   };
 
   const signOut = async () => {
@@ -142,11 +128,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       setUser(currentUser);
-      
+
       const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
       setSession(currentSession);
-      
+
       if (currentUser) {
         fetchRole(currentUser.id);
       }
@@ -163,7 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role,
         signIn,
         signUp,
-        signInWithGoogle,
         signOut,
         refreshUser,
         loading,
