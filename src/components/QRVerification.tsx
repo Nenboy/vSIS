@@ -701,11 +701,11 @@ export default function QRVerification() {
                 </select>
                 {selectedPostId ? (
                   <p className="text-xs text-blue-700 mt-2">
-                    ✅ Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
+                    Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
                   </p>
                 ) : posts.length > 0 ? (
                   <p className="text-xs text-amber-600 mt-2">
-                    ⚠️ No post selected — verifications will be logged as "Unspecified"
+                    No post selected — verifications will be logged as "Unspecified"
                   </p>
                 ) : null}
               </div>
