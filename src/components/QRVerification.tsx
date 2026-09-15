@@ -39,20 +39,80 @@ interface GeoLocation {
   accuracy: number;
 }
 
-// ✅ GPS helper — resolves with coordinates or null if unavailable/denied
+// ============================================================
+// ✅ HYBRID LOCATION SYSTEM
+// - Uses watchPosition to get the best of both worlds
+// - Indoor: Wi-Fi/cell network fix (~1s, ±100m)
+// - Outdoor: GPS satellite fix (~5s, ±10m)
+// - Session cache: reuse location for 2 minutes
+// ============================================================
+let cachedLocation: { loc: GeoLocation; timestamp: number } | null = null;
+const LOCATION_CACHE_MS = 2 * 60 * 1000; // 2 minutes
+
 const getLocation = (): Promise<GeoLocation | null> => {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
+    // ✅ Reuse recent location to avoid waiting on every scan
+    if (cachedLocation && Date.now() - cachedLocation.timestamp < LOCATION_CACHE_MS) {
+      console.log('📍 Using cached location:', cachedLocation.loc);
+      return resolve(cachedLocation.loc);
+    }
+
+    if (!navigator.geolocation) {
+      console.warn('❌ GPS: not supported');
+      return resolve(null);
+    }
+
+    let best: GeoLocation | null = null;
+    let resolved = false;
+    let watchId: number | null = null;
+
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+
+      if (best) {
+        cachedLocation = { loc: best, timestamp: Date.now() };
+        console.log('✅ Best location found:', best);
+      } else {
+        console.warn('❌ No location fix obtained');
+      }
+      resolve(best);
+    };
+
+    // watchPosition fires repeatedly as accuracy improves
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const candidate: GeoLocation = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: Math.round(pos.coords.accuracy),
-        }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+        };
+
+        // Keep the most accurate result seen so far
+        if (!best || candidate.accuracy < best.accuracy) {
+          best = candidate;
+          console.log(`📍 Location update: accuracy ±${candidate.accuracy}m`);
+        }
+
+        // If we reach high precision (GPS lock, ≤30m), resolve immediately
+        if (candidate.accuracy <= 30) {
+          finish();
+        }
+      },
+      (err) => {
+        console.warn('⚠️ Geolocation watch error:', err.code, err.message);
+        // Don't resolve on error — wait for the timeout in case we already have a fix
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
     );
+
+    // Resolve after 6 seconds with the best fix we've obtained
+    setTimeout(finish, 6000);
   });
 };
 
@@ -152,7 +212,7 @@ export default function QRVerification() {
   const verifySingle = async (qrContent: string) => {
     const identifier = extractIdentifier(qrContent);
 
-    // ✅ Capture GPS location once at the start
+    // ✅ Capture GPS location (hybrid network + GPS with caching)
     const loc = await getLocation();
     const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
 
@@ -310,7 +370,7 @@ export default function QRVerification() {
     setBulkResults([]);
     setBulkProgress({ current: 0, total: 0 });
 
-    // ✅ Capture GPS location once for the entire batch
+    // ✅ Capture GPS location once for the entire batch (uses cache on repeat)
     const loc = await getLocation();
     const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
     const accuracy = loc?.accuracy ?? null;
@@ -588,7 +648,7 @@ export default function QRVerification() {
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
                 <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-blue-700">
-                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail. Location is only captured when you scan or upload a card.
+                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail. Location is captured only when you scan or upload a card.
                 </p>
               </div>
 
