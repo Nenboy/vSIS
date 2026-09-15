@@ -28,8 +28,7 @@ function App() {
   const [loadingMyCard, setLoadingMyCard] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // ✅ FIX 1: Auto-redirect based on role
-  // Students land on "My ID Card", Admins land on "Dashboard"
+  // ✅ FIX 1: Auto-redirect based on role — keeps nav state in sync
   useEffect(() => {
     if (role === 'student' && activeTab === 'dashboard') {
       setActiveTab('my-card');
@@ -54,7 +53,7 @@ function App() {
     checkSupabaseConnection();
   }, [session]);
 
-  // Fetch the student's own card when they click the "My ID Card" tab
+  // Fetch the student's own card whenever the effective tab is my-card
   useEffect(() => {
     const fetchMyCard = async () => {
       if (activeTab === 'my-card' && user?.email) {
@@ -119,17 +118,14 @@ function App() {
   }
 
   const renderContent = () => {
-    // ✅ FIX 2: Added 'dashboard' to the admin-only list
+    // ✅ FIX: Silently route students to their card instead of showing "Access Denied"
     const adminOnlyTabs = ['dashboard', 'register', 'search', 'students', 'cards', 'activity'];
-    if (role === 'student' && adminOnlyTabs.includes(activeTab)) {
-      return (
-        <div className="p-8 text-center text-red-500 font-bold text-xl">
-          Access Denied: Admins Only
-        </div>
-      );
-    }
+    const effectiveTab =
+      role === 'student' && adminOnlyTabs.includes(activeTab)
+        ? 'my-card'
+        : activeTab;
 
-    switch (activeTab) {
+    switch (effectiveTab) {
       case 'dashboard':
         return <Dashboard onTabChange={setActiveTab} />;
       case 'register':
@@ -157,7 +153,7 @@ function App() {
           <div className="flex flex-col items-center justify-center p-8 bg-gray-50 min-h-screen">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">My Virtual ID Card</h2>
             
-            {/* ✅ The card is wrapped with an ID so html2canvas can find it */}
+            {/* The card is wrapped with an ID so html2canvas can find it */}
             <div id="printable-id-card" className="p-4">
               <VirtualIdCard student={myStudentData} />
             </div>
@@ -180,7 +176,6 @@ function App() {
       case 'settings':
         return <Settings />;
       
-      // ✅ FIX 3: Safe default instead of falling back to <Dashboard />
       default:
         return (
           <div className="p-8 text-center text-gray-500">
