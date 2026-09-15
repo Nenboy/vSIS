@@ -7,7 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
   Loader2, Upload, Search, ScanLine,
-  CheckCircle2, XCircle, AlertTriangle, FileImage, FileText, User, Layers, ArrowLeft, MapPin
+  CheckCircle2, XCircle, AlertTriangle, FileImage, FileText, User, Layers, ArrowLeft, MapPin, ArrowRight
 } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -110,7 +110,7 @@ export default function QRVerification() {
   const [loading, setLoading] = useState(false);
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'idle' | 'result' | 'bulk'>('idle');
+  const [mode, setMode] = useState<'idle' | 'result' | 'bulk' | 'pending-post'>('idle');
   const [manualInput, setManualInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [statusText, setStatusText] = useState('Verifying ID...');
@@ -122,12 +122,10 @@ export default function QRVerification() {
   const [posts, setPosts] = useState<VerificationPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string>('');
 
-  useEffect(() => {
-    const qrData = searchParams.get('data');
-    if (qrData) decodeAndVerify(qrData);
-  }, [searchParams]);
+  // ✅ Pending QR waiting for post selection
+  const [pendingQrContent, setPendingQrContent] = useState<string | null>(null);
 
-  // ✅ Load verification posts and restore saved selection
+  // Load posts on mount
   useEffect(() => {
     const loadPosts = async () => {
       const { data } = await supabase
@@ -138,10 +136,24 @@ export default function QRVerification() {
       setPosts(data || []);
     };
     loadPosts();
-
-    const saved = localStorage.getItem('selected_verification_post');
-    if (saved) setSelectedPostId(saved);
   }, []);
+
+  // ✅ Handle incoming QR — check if post is selected first
+  useEffect(() => {
+    const qrData = searchParams.get('data');
+    if (!qrData) return;
+
+    const savedPost = localStorage.getItem('selected_verification_post');
+    if (savedPost) {
+      // Post already declared for this session → verify immediately
+      setSelectedPostId(savedPost);
+      decodeAndVerify(qrData);
+    } else {
+      // First scan of the shift → require post declaration
+      setPendingQrContent(qrData);
+      setMode('pending-post');
+    }
+  }, [searchParams]);
 
   const handlePostChange = (postId: string) => {
     setSelectedPostId(postId);
@@ -155,6 +167,24 @@ export default function QRVerification() {
   const getSelectedPostName = (): string => {
     const post = posts.find(p => p.id === selectedPostId);
     return post?.name || 'Unspecified';
+  };
+
+  // ✅ Called when officer confirms the post on the pending-post screen
+  const handlePendingPostContinue = async () => {
+    if (!selectedPostId) return;
+    localStorage.setItem('selected_verification_post', selectedPostId);
+    const qr = pendingQrContent;
+    setPendingQrContent(null);
+    setMode('result');
+    if (qr) {
+      setLoading(true);
+      try {
+        await verifySingle(qr);
+      } catch (err: any) {
+        setError(err.message || 'Verification failed');
+        setLoading(false);
+      }
+    }
   };
 
   // ---------- Single verification ----------
@@ -557,10 +587,80 @@ export default function QRVerification() {
     setBulkResults([]);
     setBulkProgress({ current: 0, total: 0 });
     setStatusText('Verifying ID...');
+    setPendingQrContent(null);
     dragCounter.current = 0;
     if (fileInputRef.current) fileInputRef.current.value = '';
     navigate('/verify', { replace: true });
   };
+
+  // ================= PENDING POST (First scan of the shift) =================
+  if (mode === 'pending-post') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 flex items-center justify-center">
+        <div className="max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-800 to-indigo-900 text-white px-6 py-6 text-center">
+              <div className="inline-flex items-center justify-center w-14 h-14 bg-white/20 rounded-full mb-3">
+                <MapPin className="w-7 h-7 text-white" />
+              </div>
+              <h1 className="text-xl font-bold">Select Your Post</h1>
+              <p className="text-sm text-blue-100 mt-1">
+                Declare your location before verifying the student
+              </p>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  You're about to verify a student's ID. Before proceeding, tell the system where you are. This will be recorded in the audit trail and remembered for the rest of your shift.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-2">
+                  Verification Post
+                </label>
+                <select
+                  value={selectedPostId}
+                  onChange={(e) => setSelectedPostId(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-blue-200 rounded-lg bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select a post —</option>
+                  {posts.map((post) => (
+                    <option key={post.id} value={post.id}>
+                      {post.name}{post.code ? ` (${post.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {posts.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    No posts available. Contact the Admin to set up verification posts.
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={handlePendingPostContinue}
+                disabled={!selectedPostId}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <span>Continue to Verify</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <p className="text-xs text-center text-gray-400">
+                You can change your post later by visiting the verification page directly.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-center text-xs text-gray-400 mt-6">
+            Powered by University of Jos • Virtual ID Verification System
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ================= IDLE =================
   if (mode === 'idle') {
@@ -579,8 +679,6 @@ export default function QRVerification() {
 
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="p-8 space-y-6">
-
-              {/* ✅ Verification Post Selector */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <MapPin className="w-4 h-4 text-blue-600" />
@@ -871,6 +969,7 @@ export default function QRVerification() {
   const isExpired = student.status !== 'active';
   const session = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
 
+  // ================= SINGLE RESULT =================
   return (
     <div className={`min-h-screen py-8 px-4 ${isExpired ? 'bg-yellow-50' : 'bg-green-50'}`}>
       <div className="max-w-sm mx-auto">
@@ -955,6 +1054,13 @@ export default function QRVerification() {
                 </>
               )}
             </div>
+
+            {/* ✅ Show post name on the result */}
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-gray-600">
+              <MapPin className="w-3 h-3 text-blue-600" />
+              <span>Verified at: <strong>{getSelectedPostName()}</strong></span>
+            </div>
+
             <div className="mt-3 pt-2 border-t border-gray-200 flex justify-between items-center text-[9px] text-gray-400">
               <span>Valid until: {student.expiry_date}</span>
               <span className="font-mono">{student.student_id?.slice(-6)}</span>
