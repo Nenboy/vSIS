@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import {
   History, User, RefreshCw, AlertCircle,
   UserPlus, UserCheck, UserX, LogIn, LogOut, Settings, Eye,
-  QrCode, Search, Filter, XCircle
+  QrCode, Search, Filter, XCircle, MapPin
 } from 'lucide-react';
 
 interface ActivityLog {
@@ -48,12 +48,9 @@ export default function ActivityLogs() {
     fetchLogs();
   }, []);
 
-  // Filter + search
   const filteredLogs = logs.filter((log) => {
-    // Action filter
     if (filterAction !== 'all' && log.action !== filterAction) return false;
 
-    // Date filter
     if (dateFilter !== 'all') {
       const logDate = new Date(log.created_at);
       const today = new Date();
@@ -72,7 +69,6 @@ export default function ActivityLogs() {
       }
     }
 
-    // Search query (student name, matric, email)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const haystack = [
@@ -114,6 +110,28 @@ export default function ActivityLogs() {
     }
   };
 
+  // ✅ Renders a Google Maps link for the recorded GPS coordinates
+  const renderLocationLink = (location: string | undefined, accuracy: number | null | undefined) => {
+    if (!location || location === 'unavailable') {
+      return <span className="text-gray-400 text-xs">Location unavailable</span>;
+    }
+    const [lat, lng] = location.split(',').map(s => s.trim());
+    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
+        title={`Accuracy: ±${accuracy ?? '?'}m`}
+      >
+        <MapPin className="w-3 h-3" />
+        {location}
+        {accuracy ? ` (±${accuracy}m)` : ''}
+      </a>
+    );
+  };
+
   const formatDetails = (log: ActivityLog) => {
     const details = log.details;
     if (!details) return '-';
@@ -132,9 +150,8 @@ export default function ActivityLogs() {
       case 'UPDATE_SETTINGS':
         return 'System settings modified';
       case 'QR_VERIFICATION':
-        return `${details.student_name || 'Student'} (${details.matric_no || '-'}) — Verified${details.bulk ? ' (bulk)' : ''}`;
       case 'QR_VERIFICATION_FAILED':
-        return `${details.student_name || log.entity_id || 'Unknown'} — ${details.reason || 'Failed'}`;
+        return null; // Rendered separately with location
       default:
         return JSON.stringify(details).slice(0, 60);
     }
@@ -183,7 +200,6 @@ export default function ActivityLogs() {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Quick stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-600">
           <p className="text-sm text-gray-500">Total Logs</p>
@@ -219,9 +235,7 @@ export default function ActivityLogs() {
             </button>
           </div>
 
-          {/* Filter bar */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -233,7 +247,6 @@ export default function ActivityLogs() {
               />
             </div>
 
-            {/* Action filter */}
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <select
@@ -253,7 +266,6 @@ export default function ActivityLogs() {
               </select>
             </div>
 
-            {/* Date filter */}
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
@@ -298,12 +310,15 @@ export default function ActivityLogs() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredLogs.map((log) => {
                   const { icon: Icon, color, label } = getActionConfig(log.action);
+                  const detailsText = formatDetails(log);
+
                   return (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -319,9 +334,42 @@ export default function ActivityLogs() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
-                        <div className="truncate" title={JSON.stringify(log.details, null, 2)}>
-                          {formatDetails(log)}
-                        </div>
+                        {detailsText ? (
+                          <div className="truncate" title={JSON.stringify(log.details, null, 2)}>
+                            {detailsText}
+                          </div>
+                        ) : (
+                          // QR verification rows: richer display
+                          <div className="space-y-0.5">
+                            {log.details?.student_name && (
+                              <p className="font-medium text-gray-900">
+                                {log.details.student_name}
+                              </p>
+                            )}
+                            {log.details?.matric_no && (
+                              <p className="text-xs font-mono text-gray-500">
+                                {log.details.matric_no}
+                              </p>
+                            )}
+                            {log.details?.reason && (
+                              <p className="text-xs text-rose-600">
+                                {log.details.reason}
+                              </p>
+                            )}
+                            {log.details?.bulk && (
+                              <span className="inline-block text-[10px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                                bulk
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {(log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED') ? (
+                          renderLocationLink(log.details?.location, log.details?.accuracy_m)
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {formatDate(log.created_at)}

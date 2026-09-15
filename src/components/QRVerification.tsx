@@ -7,7 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
   Loader2, Upload, Search, ScanLine,
-  CheckCircle2, XCircle, AlertTriangle, FileImage, FileText, User, Layers, ArrowLeft
+  CheckCircle2, XCircle, AlertTriangle, FileImage, FileText, User, Layers, ArrowLeft, MapPin
 } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -32,6 +32,29 @@ interface BulkResult {
   student?: StudentInfo;
   reason?: string;
 }
+
+interface GeoLocation {
+  lat: number;
+  lng: number;
+  accuracy: number;
+}
+
+// ✅ GPS helper — resolves with coordinates or null if unavailable/denied
+const getLocation = (): Promise<GeoLocation | null> => {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy),
+        }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+    );
+  });
+};
 
 export default function QRVerification() {
   const [searchParams] = useSearchParams();
@@ -128,16 +151,24 @@ export default function QRVerification() {
 
   const verifySingle = async (qrContent: string) => {
     const identifier = extractIdentifier(qrContent);
+
+    // ✅ Capture GPS location once at the start
+    const loc = await getLocation();
+    const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
+
     if (!identifier) {
       setError('Could not extract a valid student ID from the QR code.');
       setLoading(false);
       await logActivity('QR_VERIFICATION_FAILED', 'student', 'unknown', {
         result: 'failed',
         reason: 'Invalid QR format',
+        location: locationString,
+        accuracy_m: loc?.accuracy ?? null,
         email: 'public-verifier',
       });
       return;
     }
+
     const result = await fetchStudent(identifier);
     if (!result) {
       setError('No student found with this identifier in the university database.');
@@ -145,6 +176,8 @@ export default function QRVerification() {
       await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
         result: 'failed',
         reason: 'Student not in database',
+        location: locationString,
+        accuracy_m: loc?.accuracy ?? null,
         email: 'public-verifier',
       });
     } else {
@@ -155,6 +188,8 @@ export default function QRVerification() {
           student_name: result.full_name,
           matric_no: result.matric_no,
           department: result.department,
+          location: locationString,
+          accuracy_m: loc?.accuracy ?? null,
           email: 'public-verifier',
         });
       } else {
@@ -163,6 +198,8 @@ export default function QRVerification() {
           reason: `Student status: ${result.status}`,
           student_name: result.full_name,
           matric_no: result.matric_no,
+          location: locationString,
+          accuracy_m: loc?.accuracy ?? null,
           email: 'public-verifier',
         });
       }
@@ -229,16 +266,13 @@ export default function QRVerification() {
         for (let p = 1; p <= maxPages; p++) {
           setStatusText(`Scanning page ${p} of ${pdf.numPages}...`);
           const page = await pdf.getPage(p);
-
           const viewport = page.getViewport({ scale: 6 });
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           const ctx = canvas.getContext('2d');
           if (!ctx) continue;
-
           await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-
           const qrContent = tryDecodeFromCanvas(canvas);
           if (qrContent) {
             foundQr = qrContent;
@@ -276,6 +310,11 @@ export default function QRVerification() {
     setBulkResults([]);
     setBulkProgress({ current: 0, total: 0 });
 
+    // ✅ Capture GPS location once for the entire batch
+    const loc = await getLocation();
+    const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
+    const accuracy = loc?.accuracy ?? null;
+
     const results: BulkResult[] = [];
 
     type Job = { label: string; getCanvas: () => Promise<HTMLCanvasElement> };
@@ -304,11 +343,12 @@ export default function QRVerification() {
             });
           }
         } catch (e) {
-          const failed: BulkResult = { identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' };
-          results.push(failed);
+          results.push({ identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' });
           await logActivity('QR_VERIFICATION_FAILED', 'student', file.name, {
             result: 'failed',
             reason: 'Failed to read PDF',
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -333,12 +373,13 @@ export default function QRVerification() {
         const qrContent = tryDecodeFromCanvas(canvas);
 
         if (!qrContent) {
-          const r: BulkResult = { identifier: job.label, status: 'invalid', reason: 'No QR code found' };
-          results.push(r);
+          results.push({ identifier: job.label, status: 'invalid', reason: 'No QR code found' });
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
             result: 'failed',
             reason: 'No QR code found',
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -347,12 +388,13 @@ export default function QRVerification() {
 
         const identifier = extractIdentifier(qrContent);
         if (!identifier) {
-          const r: BulkResult = { identifier: job.label, status: 'invalid', reason: 'Invalid QR format' };
-          results.push(r);
+          results.push({ identifier: job.label, status: 'invalid', reason: 'Invalid QR format' });
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
             result: 'failed',
             reason: 'Invalid QR format',
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -365,6 +407,8 @@ export default function QRVerification() {
           await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
             result: 'failed',
             reason: 'Student not in database',
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -375,6 +419,8 @@ export default function QRVerification() {
             reason: `Student status: ${student.status}`,
             student_name: student.full_name,
             matric_no: student.matric_no,
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -385,6 +431,8 @@ export default function QRVerification() {
             student_name: student.full_name,
             matric_no: student.matric_no,
             department: student.department,
+            location: locationString,
+            accuracy_m: accuracy,
             email: 'public-verifier',
             bulk: true,
           });
@@ -394,6 +442,8 @@ export default function QRVerification() {
         await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
           result: 'failed',
           reason: err.message || 'Processing error',
+          location: locationString,
+          accuracy_m: accuracy,
           email: 'public-verifier',
           bulk: true,
         });
@@ -532,6 +582,14 @@ export default function QRVerification() {
                   <FileText className="w-3.5 h-3.5" />
                   <span>PDF (single or batch)</span>
                 </div>
+              </div>
+
+              {/* ✅ GPS notice */}
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail. Location is only captured when you scan or upload a card.
+                </p>
               </div>
 
               <div className="relative">
