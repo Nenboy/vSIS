@@ -38,16 +38,9 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
       id: student.student_id,
       matric: student.matric_no,
     };
-    
     const encoded = encodeURIComponent(JSON.stringify(payload));
-    
-    // ✅ IMPORTANT: Change this to YOUR actual LAN IP from `npm run dev -- --host`
-    const LAN_IP = '10.97.162.192';  // ← CHANGE THIS LINE
-    
-    const baseUrl = window.location.hostname === 'localhost'
-      ? `http://${LAN_IP}:${window.location.port}`
-      : window.location.origin;
-    
+    // ✅ Uses the current origin — works on localhost AND deployed Vercel URL
+    const baseUrl = window.location.origin;
     return `${baseUrl}/verify?data=${encoded}`;
   }, [student]);
 
@@ -58,10 +51,9 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
       return;
     }
     setQrLoading(true);
-    // ✅ High error correction + large source size for reliable screenshot decoding
     QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H',  // 'H' = 30% error correction (most robust)
-      width: 400,                  // Generate at 400px for sharp screenshots
+      errorCorrectionLevel: 'H',
+      width: 400,
       margin: 2,
     }).then(url => {
       if (!cancelled) {
@@ -75,7 +67,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     return () => { cancelled = true; };
   }, [qrData, settings?.card.includeQRCode]);
 
-  // Wait for all images inside the cards before PDF capture
   const waitForImages = async (element: HTMLElement) => {
     const images = Array.from(element.querySelectorAll('img'));
     await Promise.all(images.map(img => {
@@ -93,31 +84,30 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     if (!frontElement || !backElement) return;
 
     try {
-      // Wait for images to load completely
       await waitForImages(frontElement);
       await waitForImages(backElement);
 
-      const frontCanvas = await html2canvas(frontElement, { 
-        scale: 2, 
-        useCORS: true, 
+      const frontCanvas = await html2canvas(frontElement, {
+        scale: 2,
+        useCORS: true,
         allowTaint: false,
-        backgroundColor: '#ffffff', 
-        logging: false 
+        backgroundColor: '#ffffff',
+        logging: false
       });
-      const backCanvas = await html2canvas(backElement, { 
-        scale: 2, 
-        useCORS: true, 
+      const backCanvas = await html2canvas(backElement, {
+        scale: 2,
+        useCORS: true,
         allowTaint: false,
-        backgroundColor: '#ffffff', 
-        logging: false 
+        backgroundColor: '#ffffff',
+        logging: false
       });
 
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85.6, 53.98] });
       const frontImg = frontCanvas.toDataURL('image/png');
-      pdf.addImage(frontImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+      pdf.addImage(frontImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
       pdf.addPage();
       const backImg = backCanvas.toDataURL('image/png');
-      pdf.addImage(backImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+      pdf.addImage(backImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
       pdf.save(`${student.first_name}_${student.last_name}_ID_Card.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -136,10 +126,11 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   }
 
   const inst = settings?.institution || {
-    name: 'University of Excellence',
-    address: '123 University Avenue, Academic City',
-    phone: '+1 (555) 123-4567',
-    website: 'www.university.edu'
+    name: 'University of Jos',
+    address: 'Bauchi Road, Jos, Plateau State, Nigeria',
+    phone: '+234 (0) 803 000 0000',
+    website: 'www.unijos.edu.ng',
+    logo: '/unijos-logo.png',
   };
 
   const showQR = settings?.card.includeQRCode ?? true;
@@ -175,12 +166,23 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
           {/* FRONT CARD */}
           <div id="card-front" className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans">
             <div className="h-full flex flex-col">
-              <div className="bg-gradient-to-r from-blue-800 to-indigo-900 text-white px-4 py-2">
-                <div className="text-[10px] font-medium tracking-wide">{inst.name}</div>
-                <div className="text-[7px] opacity-80">{inst.address}</div>
+              <div className="bg-gradient-to-r from-blue-800 to-indigo-900 text-white px-4 py-2 flex items-center gap-2">
+                {inst.logo && (
+                  <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img
+                      src={inst.logo}
+                      alt="Logo"
+                      crossOrigin="anonymous"
+                      className="w-full h-full object-contain p-0.5"
+                    />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-medium tracking-wide">{inst.name}</div>
+                  <div className="text-[7px] opacity-80">{inst.address}</div>
+                </div>
               </div>
               <div className="flex flex-1 p-3 gap-3">
-                {/* Photo Section */}
                 <div className="flex-shrink-0">
                   <div className="w-16 h-20 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
                     {student.photo_url ? (
@@ -199,7 +201,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                     )}
                   </div>
                 </div>
-                {/* Student Info */}
                 <div className="flex-1">
                   <h3 className="text-sm font-bold text-gray-800 leading-tight mb-1">{fullName.toUpperCase()}</h3>
                   <div className="text-[8px] space-y-0.5 text-gray-700">
@@ -209,10 +210,8 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                     <p><span className="font-semibold">SESSION:</span> {session}</p>
                   </div>
                 </div>
-                {/* QR Code */}
                 {showQR && (
                   <div className="flex flex-col items-center justify-center w-20">
-                    {/* ✅ Bigger QR display for reliable scanning */}
                     <div className="w-14 h-14 bg-white rounded-md shadow-sm flex items-center justify-center border border-gray-200">
                       {qrLoading ? (
                         <Loader2 className="h-5 w-5 animate-spin text-blue-700" />

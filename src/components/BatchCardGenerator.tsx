@@ -61,7 +61,6 @@ export default function BatchCardGenerator() {
     }
   };
 
-  // ✅ FIX: High-res QR (800px wide, error correction H)
   const generateQRCode = async (data: string): Promise<string> => {
     try {
       return await QRCode.toDataURL(data, {
@@ -114,17 +113,10 @@ export default function BatchCardGenerator() {
     const issueDate = formatDate(student.date_registered);
     const expiryDate = formatDate(student.expiry_date);
 
-    // ✅ Build the full verification URL
+    // ✅ Uses the current origin — works on localhost AND deployed Vercel URL
     const payload = { id: student.student_id, matric: student.matric_no };
     const encoded = encodeURIComponent(JSON.stringify(payload));
-
-    // ⚠️ CHANGE THIS to your actual LAN IP (from `npm run dev -- --host`)
-    const LAN_IP = '10.97.162.192';
-
-    const baseUrl = window.location.hostname === 'localhost'
-      ? `http://${LAN_IP}:${window.location.port}`
-      : window.location.origin;
-
+    const baseUrl = window.location.origin;
     const qrData = `${baseUrl}/verify?data=${encoded}`;
 
     const qrCodeUrl = settings.card.includeQRCode ? await generateQRCode(qrData) : '';
@@ -141,14 +133,21 @@ export default function BatchCardGenerator() {
     frontCard.style.fontFamily = 'Arial, sans-serif';
     frontCard.innerHTML = `
       <div style="height:100%; display:flex; flex-direction:column;">
-        <div style="background:linear-gradient(135deg, #1e3a8a, #312e81); color:white; padding:8px 16px;">
-          <div style="font-size:10px; font-weight:500;">${settings.institution.name}</div>
-          <div style="font-size:7px; opacity:0.8;">${settings.institution.address}</div>
+        <div style="background:linear-gradient(135deg, #1e3a8a, #312e81); color:white; padding:8px 16px; display:flex; align-items:center; gap:8px;">
+          ${settings.institution.logo ? `
+            <div style="width:24px; height:24px; background:white; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
+              <img src="${settings.institution.logo}" crossorigin="anonymous" style="width:100%; height:100%; object-fit:contain; padding:1px;" />
+            </div>
+          ` : ''}
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:10px; font-weight:500;">${settings.institution.name}</div>
+            <div style="font-size:7px; opacity:0.8;">${settings.institution.address}</div>
+          </div>
         </div>
         <div style="display:flex; flex:1; padding:12px; gap:12px;">
           <div style="flex-shrink:0; width:64px; height:80px; background:#f3f4f6; border-radius:8px; border:1px solid #e5e7eb; overflow:hidden;">
-            ${student.photo_url 
-              ? `<img src="${student.photo_url}" crossorigin="anonymous" style="width:100%; height:100%; object-fit:cover;" />` 
+            ${student.photo_url
+              ? `<img src="${student.photo_url}" crossorigin="anonymous" style="width:100%; height:100%; object-fit:cover;" />`
               : `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg></div>`
             }
           </div>
@@ -227,7 +226,6 @@ export default function BatchCardGenerator() {
     await waitForImages(backCard);
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // ✅ FIX: scale 4 instead of 2 for sharper QR
     const frontCanvas = await html2canvas(frontCard, { scale: 4, backgroundColor: '#fff', useCORS: true, allowTaint: false });
     const backCanvas = await html2canvas(backCard, { scale: 4, backgroundColor: '#fff', useCORS: true, allowTaint: false });
 
@@ -266,9 +264,9 @@ export default function BatchCardGenerator() {
         if (i > 0) {
           pdf.addPage();
         }
-        pdf.addImage(frontImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+        pdf.addImage(frontImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
         pdf.addPage();
-        pdf.addImage(backImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'FAST');
+        pdf.addImage(backImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
       }
 
       pdf.save(`student_id_cards_batch_${new Date().toISOString().split('T')[0]}.pdf`);

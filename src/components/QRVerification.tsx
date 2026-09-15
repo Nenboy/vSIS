@@ -1,3 +1,4 @@
+import { logActivity } from '../lib/activityLogger';
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -130,14 +131,41 @@ export default function QRVerification() {
     if (!identifier) {
       setError('Could not extract a valid student ID from the QR code.');
       setLoading(false);
+      await logActivity('QR_VERIFICATION_FAILED', 'student', 'unknown', {
+        result: 'failed',
+        reason: 'Invalid QR format',
+        email: 'public-verifier',
+      });
       return;
     }
     const result = await fetchStudent(identifier);
     if (!result) {
       setError('No student found with this identifier in the university database.');
       setStudent(null);
+      await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
+        result: 'failed',
+        reason: 'Student not in database',
+        email: 'public-verifier',
+      });
     } else {
       setStudent(result);
+      if (result.status === 'active') {
+        await logActivity('QR_VERIFICATION', 'student', result.student_id, {
+          result: 'verified',
+          student_name: result.full_name,
+          matric_no: result.matric_no,
+          department: result.department,
+          email: 'public-verifier',
+        });
+      } else {
+        await logActivity('QR_VERIFICATION_FAILED', 'student', result.student_id, {
+          result: 'failed',
+          reason: `Student status: ${result.status}`,
+          student_name: result.full_name,
+          matric_no: result.matric_no,
+          email: 'public-verifier',
+        });
+      }
     }
     setLoading(false);
   };
@@ -195,7 +223,6 @@ export default function QRVerification() {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-        // ✅ Scan ALL pages at HIGH resolution until we find a QR
         const maxPages = Math.min(pdf.numPages, 5);
         let foundQr: string | null = null;
 
@@ -203,7 +230,6 @@ export default function QRVerification() {
           setStatusText(`Scanning page ${p} of ${pdf.numPages}...`);
           const page = await pdf.getPage(p);
 
-          // ✅ Scale 6 = 6x resolution → sharper QR for jsQR
           const viewport = page.getViewport({ scale: 6 });
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
@@ -266,7 +292,6 @@ export default function QRVerification() {
               label: `${file.name} - page ${p}`,
               getCanvas: async () => {
                 const page = await pdf.getPage(p);
-                // ✅ Scale 6 for reliable QR detection
                 const viewport = page.getViewport({ scale: 6 });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
@@ -279,7 +304,14 @@ export default function QRVerification() {
             });
           }
         } catch (e) {
-          results.push({ identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' });
+          const failed: BulkResult = { identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' };
+          results.push(failed);
+          await logActivity('QR_VERIFICATION_FAILED', 'student', file.name, {
+            result: 'failed',
+            reason: 'Failed to read PDF',
+            email: 'public-verifier',
+            bulk: true,
+          });
         }
       } else if (file.type.startsWith('image/')) {
         jobs.push({
@@ -301,28 +333,70 @@ export default function QRVerification() {
         const qrContent = tryDecodeFromCanvas(canvas);
 
         if (!qrContent) {
-          results.push({ identifier: job.label, status: 'invalid', reason: 'No QR code found' });
+          const r: BulkResult = { identifier: job.label, status: 'invalid', reason: 'No QR code found' };
+          results.push(r);
           setBulkResults([...results]);
+          await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
+            result: 'failed',
+            reason: 'No QR code found',
+            email: 'public-verifier',
+            bulk: true,
+          });
           continue;
         }
 
         const identifier = extractIdentifier(qrContent);
         if (!identifier) {
-          results.push({ identifier: job.label, status: 'invalid', reason: 'Invalid QR format' });
+          const r: BulkResult = { identifier: job.label, status: 'invalid', reason: 'Invalid QR format' };
+          results.push(r);
           setBulkResults([...results]);
+          await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
+            result: 'failed',
+            reason: 'Invalid QR format',
+            email: 'public-verifier',
+            bulk: true,
+          });
           continue;
         }
 
         const student = await fetchStudent(identifier);
         if (!student) {
           results.push({ identifier: job.label, status: 'invalid', reason: 'Not in database' });
+          await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
+            result: 'failed',
+            reason: 'Student not in database',
+            email: 'public-verifier',
+            bulk: true,
+          });
         } else if (student.status !== 'active') {
           results.push({ identifier: job.label, status: 'expired', student });
+          await logActivity('QR_VERIFICATION_FAILED', 'student', student.student_id, {
+            result: 'failed',
+            reason: `Student status: ${student.status}`,
+            student_name: student.full_name,
+            matric_no: student.matric_no,
+            email: 'public-verifier',
+            bulk: true,
+          });
         } else {
           results.push({ identifier: job.label, status: 'valid', student });
+          await logActivity('QR_VERIFICATION', 'student', student.student_id, {
+            result: 'verified',
+            student_name: student.full_name,
+            matric_no: student.matric_no,
+            department: student.department,
+            email: 'public-verifier',
+            bulk: true,
+          });
         }
       } catch (err: any) {
         results.push({ identifier: job.label, status: 'invalid', reason: err.message });
+        await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
+          result: 'failed',
+          reason: err.message || 'Processing error',
+          email: 'public-verifier',
+          bulk: true,
+        });
       }
 
       setBulkResults([...results]);

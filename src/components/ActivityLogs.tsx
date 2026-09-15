@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { 
-  History, User, RefreshCw, AlertCircle, 
-  UserPlus, UserCheck, UserX, LogIn, LogOut, Settings, Eye
+import {
+  History, User, RefreshCw, AlertCircle,
+  UserPlus, UserCheck, UserX, LogIn, LogOut, Settings, Eye,
+  QrCode, Search, Filter, XCircle
 } from 'lucide-react';
 
 interface ActivityLog {
@@ -19,6 +20,9 @@ export default function ActivityLogs() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filterAction, setFilterAction] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState<string>('all');
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -28,7 +32,7 @@ export default function ActivityLogs() {
         .from('activity_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(500);
 
       if (error) throw error;
       setLogs(data || []);
@@ -44,6 +48,49 @@ export default function ActivityLogs() {
     fetchLogs();
   }, []);
 
+  // Filter + search
+  const filteredLogs = logs.filter((log) => {
+    // Action filter
+    if (filterAction !== 'all' && log.action !== filterAction) return false;
+
+    // Date filter
+    if (dateFilter !== 'all') {
+      const logDate = new Date(log.created_at);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (dateFilter === 'today') {
+        if (logDate < today) return false;
+      } else if (dateFilter === 'week') {
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        if (logDate < weekAgo) return false;
+      } else if (dateFilter === 'month') {
+        const monthAgo = new Date(today);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        if (logDate < monthAgo) return false;
+      }
+    }
+
+    // Search query (student name, matric, email)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const haystack = [
+        log.user_email,
+        log.entity_id,
+        log.details?.student_name,
+        log.details?.matric_no,
+        log.details?.name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
+  });
+
   const getActionConfig = (action: string) => {
     switch (action) {
       case 'CREATE_STUDENT':
@@ -58,6 +105,10 @@ export default function ActivityLogs() {
         return { icon: LogOut, color: 'bg-gray-100 text-gray-700', label: 'Logout' };
       case 'UPDATE_SETTINGS':
         return { icon: Settings, color: 'bg-yellow-100 text-yellow-700', label: 'Settings Changed' };
+      case 'QR_VERIFICATION':
+        return { icon: QrCode, color: 'bg-emerald-100 text-emerald-700', label: 'QR Verified' };
+      case 'QR_VERIFICATION_FAILED':
+        return { icon: XCircle, color: 'bg-rose-100 text-rose-700', label: 'QR Failed' };
       default:
         return { icon: Eye, color: 'bg-gray-100 text-gray-700', label: action.replace(/_/g, ' ') };
     }
@@ -71,31 +122,32 @@ export default function ActivityLogs() {
       case 'CREATE_STUDENT':
         return `Created: ${details.name || 'Student'} (${details.matric_no || 'N/A'})`;
       case 'UPDATE_STUDENT':
-        if (details.after && details.before) {
-          const changed = Object.keys(details.after).filter(k => 
-            details.before[k] !== details.after[k] && k !== 'id'
-          );
-          if (changed.length > 0) {
-            return `Updated: ${changed.join(', ')}`;
-          }
-        }
         return 'Student details updated';
       case 'DELETE_STUDENT':
-        return `Deleted: ${details.name || 'Student'} (${details.matric_no || 'N/A'})`;
+        return `Deleted: ${details.name || 'Student'}`;
       case 'LOGIN':
         return `Signed in as ${details.email || log.user_email}`;
       case 'LOGOUT':
-        return `Signed out`;
+        return 'Signed out';
       case 'UPDATE_SETTINGS':
         return 'System settings modified';
+      case 'QR_VERIFICATION':
+        return `${details.student_name || 'Student'} (${details.matric_no || '-'}) — Verified${details.bulk ? ' (bulk)' : ''}`;
+      case 'QR_VERIFICATION_FAILED':
+        return `${details.student_name || log.entity_id || 'Unknown'} — ${details.reason || 'Failed'}`;
       default:
         return JSON.stringify(details).slice(0, 60);
     }
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString();
+    return new Date(dateString).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   if (loading) {
@@ -126,11 +178,34 @@ export default function ActivityLogs() {
     );
   }
 
+  const qrVerifiedCount = logs.filter(l => l.action === 'QR_VERIFICATION').length;
+  const qrFailedCount = logs.filter(l => l.action === 'QR_VERIFICATION_FAILED').length;
+
   return (
     <div className="max-w-7xl mx-auto p-6">
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-600">
+          <p className="text-sm text-gray-500">Total Logs</p>
+          <p className="text-2xl font-bold text-gray-900">{logs.length}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-emerald-600">
+          <p className="text-sm text-gray-500">Successful Scans</p>
+          <p className="text-2xl font-bold text-emerald-700">{qrVerifiedCount}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-rose-600">
+          <p className="text-sm text-gray-500">Failed Scans</p>
+          <p className="text-2xl font-bold text-rose-700">{qrFailedCount}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-600">
+          <p className="text-sm text-gray-500">Showing</p>
+          <p className="text-2xl font-bold text-purple-700">{filteredLogs.length}</p>
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow-lg">
         <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
             <div className="flex items-center space-x-2">
               <History className="h-6 w-6 text-blue-600" />
               <h2 className="text-2xl font-bold text-gray-900">Activity Logs</h2>
@@ -143,15 +218,78 @@ export default function ActivityLogs() {
               <span>Refresh</span>
             </button>
           </div>
-          <p className="mt-2 text-sm text-gray-500">Track all user actions in the system</p>
+
+          {/* Filter bar */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, matric, email..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Action filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <select
+                value={filterAction}
+                onChange={(e) => setFilterAction(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="all">All Actions</option>
+                <option value="QR_VERIFICATION">QR Verified</option>
+                <option value="QR_VERIFICATION_FAILED">QR Failed</option>
+                <option value="CREATE_STUDENT">Created Student</option>
+                <option value="UPDATE_STUDENT">Updated Student</option>
+                <option value="DELETE_STUDENT">Deleted Student</option>
+                <option value="LOGIN">Login</option>
+                <option value="LOGOUT">Logout</option>
+                <option value="UPDATE_SETTINGS">Settings Changed</option>
+              </select>
+            </div>
+
+            {/* Date filter */}
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">Last 7 Days</option>
+              <option value="month">Last 30 Days</option>
+            </select>
+          </div>
+
+          {(filterAction !== 'all' || searchQuery || dateFilter !== 'all') && (
+            <button
+              onClick={() => {
+                setFilterAction('all');
+                setSearchQuery('');
+                setDateFilter('all');
+              }}
+              className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              ← Clear filters
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
-          {logs.length === 0 ? (
+          {filteredLogs.length === 0 ? (
             <div className="text-center py-12">
               <History className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No activity logs found</h3>
-              <p className="mt-1 text-sm text-gray-500">Actions will appear here once you start using the system.</p>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No activity found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {logs.length === 0
+                  ? 'Actions will appear here as the system is used.'
+                  : 'Try adjusting your filters.'}
+              </p>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
@@ -159,13 +297,12 @@ export default function ActivityLogs() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entity</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {logs.map((log) => {
+                {filteredLogs.map((log) => {
                   const { icon: Icon, color, label } = getActionConfig(log.action);
                   return (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
@@ -181,13 +318,7 @@ export default function ActivityLogs() {
                           <span>{label}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {log.entity_type}
-                        {log.entity_id && (
-                          <span className="text-xs text-gray-400 ml-1">({log.entity_id.slice(0, 8)}…)</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 max-w-md">
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
                         <div className="truncate" title={JSON.stringify(log.details, null, 2)}>
                           {formatDetails(log)}
                         </div>
