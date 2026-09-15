@@ -39,19 +39,20 @@ interface GeoLocation {
   accuracy: number;
 }
 
+interface VerificationPost {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 // ============================================================
 // ✅ HYBRID LOCATION SYSTEM
-// - Uses watchPosition to get the best of both worlds
-// - Indoor: Wi-Fi/cell network fix (~1s, ±100m)
-// - Outdoor: GPS satellite fix (~5s, ±10m)
-// - Session cache: reuse location for 2 minutes
 // ============================================================
 let cachedLocation: { loc: GeoLocation; timestamp: number } | null = null;
-const LOCATION_CACHE_MS = 2 * 60 * 1000; // 2 minutes
+const LOCATION_CACHE_MS = 2 * 60 * 1000;
 
 const getLocation = (): Promise<GeoLocation | null> => {
   return new Promise((resolve) => {
-    // ✅ Reuse recent location to avoid waiting on every scan
     if (cachedLocation && Date.now() - cachedLocation.timestamp < LOCATION_CACHE_MS) {
       console.log('📍 Using cached location:', cachedLocation.loc);
       return resolve(cachedLocation.loc);
@@ -80,7 +81,6 @@ const getLocation = (): Promise<GeoLocation | null> => {
       resolve(best);
     };
 
-    // watchPosition fires repeatedly as accuracy improves
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const candidate: GeoLocation = {
@@ -88,30 +88,16 @@ const getLocation = (): Promise<GeoLocation | null> => {
           lng: pos.coords.longitude,
           accuracy: Math.round(pos.coords.accuracy),
         };
-
-        // Keep the most accurate result seen so far
         if (!best || candidate.accuracy < best.accuracy) {
           best = candidate;
           console.log(`📍 Location update: accuracy ±${candidate.accuracy}m`);
         }
-
-        // If we reach high precision (GPS lock, ≤30m), resolve immediately
-        if (candidate.accuracy <= 30) {
-          finish();
-        }
+        if (candidate.accuracy <= 30) finish();
       },
-      (err) => {
-        console.warn('⚠️ Geolocation watch error:', err.code, err.message);
-        // Don't resolve on error — wait for the timeout in case we already have a fix
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
+      (err) => console.warn('⚠️ Geolocation watch error:', err.code, err.message),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 
-    // Resolve after 6 seconds with the best fix we've obtained
     setTimeout(finish, 6000);
   });
 };
@@ -132,10 +118,44 @@ export default function QRVerification() {
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const dragCounter = useRef(0);
 
+  // ✅ Verification Posts
+  const [posts, setPosts] = useState<VerificationPost[]>([]);
+  const [selectedPostId, setSelectedPostId] = useState<string>('');
+
   useEffect(() => {
     const qrData = searchParams.get('data');
     if (qrData) decodeAndVerify(qrData);
   }, [searchParams]);
+
+  // ✅ Load verification posts and restore saved selection
+  useEffect(() => {
+    const loadPosts = async () => {
+      const { data } = await supabase
+        .from('verification_posts')
+        .select('id, name, code')
+        .eq('active', true)
+        .order('name', { ascending: true });
+      setPosts(data || []);
+    };
+    loadPosts();
+
+    const saved = localStorage.getItem('selected_verification_post');
+    if (saved) setSelectedPostId(saved);
+  }, []);
+
+  const handlePostChange = (postId: string) => {
+    setSelectedPostId(postId);
+    if (postId) {
+      localStorage.setItem('selected_verification_post', postId);
+    } else {
+      localStorage.removeItem('selected_verification_post');
+    }
+  };
+
+  const getSelectedPostName = (): string => {
+    const post = posts.find(p => p.id === selectedPostId);
+    return post?.name || 'Unspecified';
+  };
 
   // ---------- Single verification ----------
   const decodeAndVerify = async (qrContent: string) => {
@@ -211,10 +231,9 @@ export default function QRVerification() {
 
   const verifySingle = async (qrContent: string) => {
     const identifier = extractIdentifier(qrContent);
-
-    // ✅ Capture GPS location (hybrid network + GPS with caching)
     const loc = await getLocation();
     const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
+    const post = getSelectedPostName();
 
     if (!identifier) {
       setError('Could not extract a valid student ID from the QR code.');
@@ -224,6 +243,7 @@ export default function QRVerification() {
         reason: 'Invalid QR format',
         location: locationString,
         accuracy_m: loc?.accuracy ?? null,
+        post,
         email: 'public-verifier',
       });
       return;
@@ -238,6 +258,7 @@ export default function QRVerification() {
         reason: 'Student not in database',
         location: locationString,
         accuracy_m: loc?.accuracy ?? null,
+        post,
         email: 'public-verifier',
       });
     } else {
@@ -250,6 +271,7 @@ export default function QRVerification() {
           department: result.department,
           location: locationString,
           accuracy_m: loc?.accuracy ?? null,
+          post,
           email: 'public-verifier',
         });
       } else {
@@ -260,6 +282,7 @@ export default function QRVerification() {
           matric_no: result.matric_no,
           location: locationString,
           accuracy_m: loc?.accuracy ?? null,
+          post,
           email: 'public-verifier',
         });
       }
@@ -267,7 +290,6 @@ export default function QRVerification() {
     setLoading(false);
   };
 
-  // ---------- Canvas QR decode ----------
   const tryDecodeFromCanvas = (canvas: HTMLCanvasElement): string | null => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
@@ -278,7 +300,6 @@ export default function QRVerification() {
     return qrCode?.data || null;
   };
 
-  // ---------- Image → Canvas ----------
   const imageFileToCanvas = (file: File): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -307,7 +328,6 @@ export default function QRVerification() {
     });
   };
 
-  // ---------- SINGLE-FILE PROCESSING ----------
   const processFile = async (file: File) => {
     setLoading(true);
     setMode('result');
@@ -334,15 +354,10 @@ export default function QRVerification() {
           if (!ctx) continue;
           await page.render({ canvasContext: ctx, viewport, canvas }).promise;
           const qrContent = tryDecodeFromCanvas(canvas);
-          if (qrContent) {
-            foundQr = qrContent;
-            break;
-          }
+          if (qrContent) { foundQr = qrContent; break; }
         }
 
-        if (!foundQr) {
-          throw new Error('No QR code detected in the PDF. Try a higher-quality PDF or upload a screenshot.');
-        }
+        if (!foundQr) throw new Error('No QR code detected in the PDF. Try a higher-quality PDF or upload a screenshot.');
         await verifySingle(foundQr);
         return;
       }
@@ -363,17 +378,16 @@ export default function QRVerification() {
     }
   };
 
-  // ---------- BULK PROCESSING ----------
   const processBulkFiles = async (files: File[]) => {
     setMode('bulk');
     setLoading(true);
     setBulkResults([]);
     setBulkProgress({ current: 0, total: 0 });
 
-    // ✅ Capture GPS location once for the entire batch (uses cache on repeat)
     const loc = await getLocation();
     const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
     const accuracy = loc?.accuracy ?? null;
+    const post = getSelectedPostName();
 
     const results: BulkResult[] = [];
 
@@ -405,19 +419,13 @@ export default function QRVerification() {
         } catch (e) {
           results.push({ identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' });
           await logActivity('QR_VERIFICATION_FAILED', 'student', file.name, {
-            result: 'failed',
-            reason: 'Failed to read PDF',
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'failed', reason: 'Failed to read PDF',
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
         }
       } else if (file.type.startsWith('image/')) {
-        jobs.push({
-          label: file.name,
-          getCanvas: () => imageFileToCanvas(file),
-        });
+        jobs.push({ label: file.name, getCanvas: () => imageFileToCanvas(file) });
       }
     }
 
@@ -436,12 +444,9 @@ export default function QRVerification() {
           results.push({ identifier: job.label, status: 'invalid', reason: 'No QR code found' });
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
-            result: 'failed',
-            reason: 'No QR code found',
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'failed', reason: 'No QR code found',
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
           continue;
         }
@@ -451,12 +456,9 @@ export default function QRVerification() {
           results.push({ identifier: job.label, status: 'invalid', reason: 'Invalid QR format' });
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
-            result: 'failed',
-            reason: 'Invalid QR format',
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'failed', reason: 'Invalid QR format',
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
           continue;
         }
@@ -465,47 +467,33 @@ export default function QRVerification() {
         if (!student) {
           results.push({ identifier: job.label, status: 'invalid', reason: 'Not in database' });
           await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
-            result: 'failed',
-            reason: 'Student not in database',
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'failed', reason: 'Student not in database',
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
         } else if (student.status !== 'active') {
           results.push({ identifier: job.label, status: 'expired', student });
           await logActivity('QR_VERIFICATION_FAILED', 'student', student.student_id, {
-            result: 'failed',
-            reason: `Student status: ${student.status}`,
-            student_name: student.full_name,
-            matric_no: student.matric_no,
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'failed', reason: `Student status: ${student.status}`,
+            student_name: student.full_name, matric_no: student.matric_no,
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
         } else {
           results.push({ identifier: job.label, status: 'valid', student });
           await logActivity('QR_VERIFICATION', 'student', student.student_id, {
-            result: 'verified',
-            student_name: student.full_name,
-            matric_no: student.matric_no,
-            department: student.department,
-            location: locationString,
-            accuracy_m: accuracy,
-            email: 'public-verifier',
-            bulk: true,
+            result: 'verified', student_name: student.full_name,
+            matric_no: student.matric_no, department: student.department,
+            location: locationString, accuracy_m: accuracy, post,
+            email: 'public-verifier', bulk: true,
           });
         }
       } catch (err: any) {
         results.push({ identifier: job.label, status: 'invalid', reason: err.message });
         await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
-          result: 'failed',
-          reason: err.message || 'Processing error',
-          location: locationString,
-          accuracy_m: accuracy,
-          email: 'public-verifier',
-          bulk: true,
+          result: 'failed', reason: err.message || 'Processing error',
+          location: locationString, accuracy_m: accuracy, post,
+          email: 'public-verifier', bulk: true,
         });
       }
 
@@ -515,7 +503,6 @@ export default function QRVerification() {
     setLoading(false);
   };
 
-  // ---------- File input handlers ----------
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -592,6 +579,39 @@ export default function QRVerification() {
 
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="p-8 space-y-6">
+
+              {/* ✅ Verification Post Selector */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <MapPin className="w-4 h-4 text-blue-600" />
+                  <label className="text-sm font-semibold text-gray-800">
+                    Verification Post
+                  </label>
+                  <span className="text-xs text-gray-500">(Select before scanning)</span>
+                </div>
+                <select
+                  value={selectedPostId}
+                  onChange={(e) => handlePostChange(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-blue-200 rounded-lg bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select a post —</option>
+                  {posts.map((post) => (
+                    <option key={post.id} value={post.id}>
+                      {post.name}{post.code ? ` (${post.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedPostId ? (
+                  <p className="text-xs text-blue-700 mt-2">
+                    ✅ Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
+                  </p>
+                ) : posts.length > 0 ? (
+                  <p className="text-xs text-amber-600 mt-2">
+                    ⚠️ No post selected — verifications will be logged as "Unspecified"
+                  </p>
+                ) : null}
+              </div>
+
               <div
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
@@ -644,11 +664,10 @@ export default function QRVerification() {
                 </div>
               </div>
 
-              {/* ✅ GPS notice */}
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
                 <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-blue-700">
-                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail. Location is captured only when you scan or upload a card.
+                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail.
                 </p>
               </div>
 
@@ -770,19 +789,14 @@ export default function QRVerification() {
                     {result.status === 'expired' && <AlertTriangle className="w-6 h-6 text-yellow-500" />}
                     {result.status === 'invalid' && <XCircle className="w-6 h-6 text-red-500" />}
                   </div>
-
                   {result.student?.photo_url ? (
-                    <img
-                      src={result.student.photo_url}
-                      alt=""
-                      className="w-10 h-10 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                    />
+                    <img src={result.student.photo_url} alt=""
+                      className="w-10 h-10 rounded-full object-cover border border-gray-200 flex-shrink-0" />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                       <User className="w-5 h-5 text-gray-400" />
                     </div>
                   )}
-
                   <div className="flex-1 min-w-0">
                     {result.student ? (
                       <>
@@ -795,14 +809,11 @@ export default function QRVerification() {
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-semibold text-gray-900 truncate">
-                          {result.identifier}
-                        </p>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{result.identifier}</p>
                         <p className="text-xs text-red-500">{result.reason}</p>
                       </>
                     )}
                   </div>
-
                   <span className={`text-[10px] uppercase font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${
                     result.status === 'valid' ? 'bg-green-100 text-green-700' :
                     result.status === 'expired' ? 'bg-yellow-100 text-yellow-700' :
@@ -812,11 +823,8 @@ export default function QRVerification() {
                   </span>
                 </div>
               ))}
-
               {bulkResults.length === 0 && !loading && (
-                <div className="px-6 py-16 text-center text-gray-500">
-                  No results yet
-                </div>
+                <div className="px-6 py-16 text-center text-gray-500">No results yet</div>
               )}
             </div>
           </div>
@@ -849,10 +857,8 @@ export default function QRVerification() {
           <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-red-700 mb-2">INVALID ID</h2>
           <p className="text-red-600 text-sm">{error}</p>
-          <button
-            onClick={reset}
-            className="mt-8 bg-red-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors"
-          >
+          <button onClick={reset}
+            className="mt-8 bg-red-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-red-700 transition-colors">
             Try Again
           </button>
         </div>
@@ -865,7 +871,6 @@ export default function QRVerification() {
   const isExpired = student.status !== 'active';
   const session = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
 
-  // ================= SINGLE RESULT =================
   return (
     <div className={`min-h-screen py-8 px-4 ${isExpired ? 'bg-yellow-50' : 'bg-green-50'}`}>
       <div className="max-w-sm mx-auto">
@@ -946,9 +951,7 @@ export default function QRVerification() {
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-xs font-bold text-green-700 tracking-wide">
-                    VERIFIED ✓
-                  </span>
+                  <span className="text-xs font-bold text-green-700 tracking-wide">VERIFIED ✓</span>
                 </>
               )}
             </div>
@@ -964,10 +967,7 @@ export default function QRVerification() {
         </div>
 
         <div className="text-center mt-6">
-          <button
-            onClick={reset}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-          >
+          <button onClick={reset} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
             ← Verify another ID
           </button>
         </div>

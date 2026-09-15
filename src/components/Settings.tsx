@@ -2,6 +2,7 @@ import { supabase } from "../lib/supabase";
 import { useEffect, useState } from 'react';
 import { Settings as SettingsIcon, Save, Landmark, Shield, Database, X } from 'lucide-react';
 import { logActivity } from '../lib/activityLogger';
+import VerificationPostsManager from './VerificationPostsManager';
 
 export default function Settings() {
   const [loading, setLoading] = useState(true);
@@ -150,14 +151,6 @@ export default function Settings() {
           }`}
           style={{ minWidth: '280px', cursor: 'pointer' }}
           onClick={dismissNotification}
-          onTouchStart={(e) => {
-            const startX = e.touches[0].clientX;
-            const onTouchMove = (moveEvent: TouchEvent) => {
-              const dx = moveEvent.touches[0].clientX - startX;
-              if (Math.abs(dx) > 50) dismissNotification();
-            };
-            document.addEventListener('touchmove', onTouchMove, { once: true });
-          }}
         >
           <span className="font-medium">{notification.message}</span>
           <button
@@ -360,6 +353,9 @@ export default function Settings() {
               </div>
             </div>
           </div>
+
+          {/* ✅ Verification Posts */}
+          <VerificationPostsManager />
 
           <div className="flex justify-end pt-6 border-t border-gray-200">
             <button

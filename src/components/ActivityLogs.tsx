@@ -77,6 +77,7 @@ export default function ActivityLogs() {
         log.details?.student_name,
         log.details?.matric_no,
         log.details?.name,
+        log.details?.post,
       ]
         .filter(Boolean)
         .join(' ')
@@ -110,7 +111,6 @@ export default function ActivityLogs() {
     }
   };
 
-  // ✅ Renders a Google Maps link for the recorded GPS coordinates
   const renderLocationLink = (location: string | undefined, accuracy: number | null | undefined) => {
     if (!location || location === 'unavailable') {
       return <span className="text-gray-400 text-xs">Location unavailable</span>;
@@ -151,7 +151,7 @@ export default function ActivityLogs() {
         return 'System settings modified';
       case 'QR_VERIFICATION':
       case 'QR_VERIFICATION_FAILED':
-        return null; // Rendered separately with location
+        return null;
       default:
         return JSON.stringify(details).slice(0, 60);
     }
@@ -242,7 +242,7 @@ export default function ActivityLogs() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name, matric, email..."
+                placeholder="Search by name, matric, post..."
                 className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -310,6 +310,7 @@ export default function ActivityLogs() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location (Click for Map)</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
                 </tr>
@@ -318,6 +319,7 @@ export default function ActivityLogs() {
                 {filteredLogs.map((log) => {
                   const { icon: Icon, color, label } = getActionConfig(log.action);
                   const detailsText = formatDetails(log);
+                  const isQR = log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED';
 
                   return (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
@@ -339,7 +341,6 @@ export default function ActivityLogs() {
                             {detailsText}
                           </div>
                         ) : (
-                          // QR verification rows: richer display
                           <div className="space-y-0.5">
                             {log.details?.student_name && (
                               <p className="font-medium text-gray-900">
@@ -365,7 +366,17 @@ export default function ActivityLogs() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {(log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED') ? (
+                        {isQR && log.details?.post && log.details.post !== 'Unspecified' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                            <MapPin className="w-3 h-3 text-blue-500" />
+                            {log.details.post}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {isQR ? (
                           renderLocationLink(log.details?.location, log.details?.accuracy_m)
                         ) : (
                           <span className="text-gray-300 text-xs">—</span>
