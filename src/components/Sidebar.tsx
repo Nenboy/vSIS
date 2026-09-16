@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   User, CreditCard, LayoutDashboard, Users, Search,
-  Settings, Layers, History, LogOut, Menu, X
+  Settings, Layers, History, LogOut, Menu, X, UserCircle
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -22,7 +22,8 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     { id: 'cards', label: 'Batch Cards', icon: Layers, roles: ['admin'] },
     { id: 'activity', label: 'Activity Logs', icon: History, roles: ['admin'] },
     { id: 'my-card', label: 'My ID Card', icon: CreditCard, roles: ['student'] },
-    { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'student'] },
+    { id: 'profile', label: 'My Profile', icon: UserCircle, roles: ['student'] },  // ✅ NEW
+    { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin'] },        // ✅ Admin only
   ];
 
   const visibleTabs = tabs.filter(tab => tab.roles.includes(role || 'student'));

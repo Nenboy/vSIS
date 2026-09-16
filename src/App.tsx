@@ -116,7 +116,7 @@ function App() {
   }
 
   const renderContent = () => {
-    const adminOnlyTabs = ['dashboard', 'register', 'search', 'students', 'cards', 'activity'];
+    const adminOnlyTabs = ['dashboard', 'register', 'search', 'students', 'cards', 'activity', 'settings'];
     const effectiveTab =
       role === 'student' && adminOnlyTabs.includes(activeTab)
         ? 'my-card'
