@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 import { useSettings } from '../hooks/useSettings';
 
 export default function BatchCardGenerator() {
@@ -74,6 +75,26 @@ export default function BatchCardGenerator() {
     }
   };
 
+  // ✅ Generate barcode as data URL for inline HTML
+  const generateBarcodeDataUrl = async (data: string): Promise<string> => {
+    try {
+      const canvas = document.createElement('canvas');
+      JsBarcode(canvas, data, {
+        format: 'CODE128',
+        width: 2,
+        height: 40,
+        displayValue: false,
+        margin: 0,
+        background: '#ffffff',
+        lineColor: '#1f2937',
+      });
+      return canvas.toDataURL('image/png');
+    } catch (err) {
+      console.error('Barcode generation failed:', err);
+      return '';
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -113,16 +134,21 @@ export default function BatchCardGenerator() {
     const issueDate = formatDate(student.date_registered);
     const expiryDate = formatDate(student.expiry_date);
 
-    // ✅ CORRECT QR FORMAT: /verify?data=<encoded JSON>
+    // QR
     const payload = { id: student.student_id, matric: student.matric_no };
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const baseUrl = window.location.origin;
     const qrData = `${baseUrl}/verify?data=${encoded}`;
-
     const qrCodeUrl = settings.card.includeQRCode ? await generateQRCode(qrData) : '';
+
+    // ✅ Barcode
+    const barcodeUrl = settings.card.includeBarcode
+      ? await generateBarcodeDataUrl(student.matric_no)
+      : '';
 
     // Front card
     const frontCard = document.createElement('div');
+    frontCard.style.position = 'relative';
     frontCard.style.width = '340px';
     frontCard.style.height = '215px';
     frontCard.style.backgroundColor = 'white';
@@ -132,7 +158,17 @@ export default function BatchCardGenerator() {
     frontCard.style.border = '1px solid #e5e7eb';
     frontCard.style.fontFamily = 'Arial, sans-serif';
     frontCard.innerHTML = `
-      <div style="height:100%; display:flex; flex-direction:column;">
+      ${settings.card.securityFeatures ? `
+        <div style="position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0;">
+          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-20deg); font-size:64px; font-weight:900; color:#1e3a8a; opacity:0.04; letter-spacing:0.2em; white-space:nowrap;">
+            UNIJOS
+          </div>
+          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(20deg); font-size:36px; font-weight:900; color:#1e3a8a; opacity:0.03; letter-spacing:0.2em; white-space:nowrap;">
+            OFFICIAL
+          </div>
+        </div>
+      ` : ''}
+      <div style="position:relative; z-index:1; height:100%; display:flex; flex-direction:column;">
         <div style="background:linear-gradient(135deg, #1e3a8a, #312e81); color:white; padding:8px 16px; display:flex; align-items:center; gap:8px;">
           ${settings.institution.logo ? `
             <div style="width:24px; height:24px; background:white; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
@@ -169,6 +205,11 @@ export default function BatchCardGenerator() {
           </div>
           ` : ''}
         </div>
+        ${settings.card.includeBarcode && barcodeUrl ? `
+          <div style="padding:2px 12px 4px 12px; display:flex; justify-content:center; align-items:center;">
+            <img src="${barcodeUrl}" style="height:24px; max-width:180px; object-fit:contain;" />
+          </div>
+        ` : ''}
         <div style="border-top:1px solid #e5e7eb; padding:6px 12px; display:flex; justify-content:space-between;">
           <span style="font-size:6px; color:#6b7280;">Member since ${issueDate}</span>
           <span style="font-size:6px; font-family:monospace; color:#9ca3af;">${student.student_id?.slice(-6)}</span>
@@ -291,19 +332,19 @@ export default function BatchCardGenerator() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-4 sm:p-6">
       <div className="bg-white rounded-lg shadow-lg">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <h2 className="text-3xl font-bold text-gray-900 flex items-center space-x-2">
-              <CreditCard className="h-8 w-8" />
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center space-x-2">
+              <CreditCard className="h-6 w-6 sm:h-8 sm:w-8" />
               <span>Batch Card Generation</span>
             </h2>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-stretch sm:items-end gap-2">
               <button
                 onClick={generateBatchPDF}
                 disabled={selectedStudents.size === 0 || generating}
-                className="px-6 py-3 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                className="px-6 py-3 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
               >
                 <Download className="h-4 w-4" />
                 <span>
@@ -314,7 +355,7 @@ export default function BatchCardGenerator() {
                 </span>
               </button>
               {generating && progress.total > 0 && (
-                <div className="w-64 bg-gray-200 rounded-full h-2">
+                <div className="w-full sm:w-64 bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{ width: `${(progress.current / progress.total) * 100}%` }}
@@ -324,11 +365,11 @@ export default function BatchCardGenerator() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
             <select
               value={filters.department}
               onChange={(e) => setFilters({ ...filters, department: e.target.value })}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
               <option value="">All Departments</option>
               {DEPARTMENTS.map((dept) => (
@@ -339,7 +380,7 @@ export default function BatchCardGenerator() {
             <select
               value={filters.level}
               onChange={(e) => setFilters({ ...filters, level: e.target.value })}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
               <option value="">All Levels</option>
               {LEVELS.map((level) => (
@@ -350,7 +391,7 @@ export default function BatchCardGenerator() {
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white"
             >
               <option value="">All Status</option>
               <option value="active">Active</option>
@@ -359,7 +400,7 @@ export default function BatchCardGenerator() {
             </select>
           </div>
 
-          <div className="flex items-center justify-between mb-4 p-4 bg-gray-50 rounded-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-lg">
             <button
               onClick={toggleAll}
               className="flex items-center space-x-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
@@ -379,13 +420,13 @@ export default function BatchCardGenerator() {
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {filteredStudents.length > 0 ? (
             <div className="space-y-2">
               {filteredStudents.map((student) => (
                 <div
                   key={student.id}
-                  className={`flex items-center space-x-4 p-4 border rounded-lg cursor-pointer transition-all ${
+                  className={`flex items-center gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg cursor-pointer transition-all ${
                     selectedStudents.has(student.id)
                       ? 'border-blue-300 bg-blue-50'
                       : 'border-gray-200 hover:bg-gray-50'
@@ -408,19 +449,21 @@ export default function BatchCardGenerator() {
                       </div>
                     )}
                   </div>
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="font-semibold text-gray-900">{student.first_name} {student.last_name}</p>
-                      <p className="text-sm text-gray-500">{student.student_id}</p>
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2 md:gap-4 min-w-0">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 truncate text-sm">
+                        {student.first_name} {student.last_name}
+                      </p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{student.student_id}</p>
                     </div>
-                    <div>
+                    <div className="hidden md:block">
                       <p className="text-sm text-gray-900">{student.matric_no}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-900">{student.department}</p>
-                      <p className="text-sm text-gray-500">{student.level}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm text-gray-900 truncate">{student.department}</p>
+                      <p className="text-xs text-gray-500">{student.level}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="md:text-right">
                       <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
                         student.status === 'active'
                           ? 'bg-green-100 text-green-800'

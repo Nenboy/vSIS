@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Student } from '../types/student';
@@ -17,6 +18,7 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   const [qrLoading, setQrLoading] = useState(true);
   const [photoLoaded, setPhotoLoaded] = useState(false);
   const photoRef = useRef<HTMLImageElement>(null);
+  const barcodeRef = useRef<SVGSVGElement>(null);
 
   const fullName = `${student.first_name} ${student.middle_name ? student.middle_name + ' ' : ''}${student.last_name}`;
   const session = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
@@ -24,42 +26,27 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+      year: 'numeric', month: 'short', day: 'numeric'
     });
   };
 
   const issueDate = formatDate(student.date_registered);
   const expiryDate = formatDate(student.expiry_date);
 
-  // ✅ CORRECT QR FORMAT: https://vsis-ten.vercel.app/verify?data=<encoded JSON>
   const qrData = useMemo(() => {
-    const payload = {
-      id: student.student_id,
-      matric: student.matric_no,
-    };
+    const payload = { id: student.student_id, matric: student.matric_no };
     const encoded = encodeURIComponent(JSON.stringify(payload));
-    const baseUrl = window.location.origin;
-    return `${baseUrl}/verify?data=${encoded}`;
+    return `${window.location.origin}/verify?data=${encoded}`;
   }, [student]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!settings?.card.includeQRCode) {
-      setQrLoading(false);
-      return;
-    }
+    if (!settings?.card.includeQRCode) { setQrLoading(false); return; }
     setQrLoading(true);
     QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H',
-      width: 400,
-      margin: 2,
+      errorCorrectionLevel: 'H', width: 400, margin: 2,
     }).then(url => {
-      if (!cancelled) {
-        setQrCodeUrl(url);
-        setQrLoading(false);
-      }
+      if (!cancelled) { setQrCodeUrl(url); setQrLoading(false); }
     }).catch(err => {
       console.error(err);
       if (!cancelled) setQrLoading(false);
@@ -67,14 +54,29 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     return () => { cancelled = true; };
   }, [qrData, settings?.card.includeQRCode]);
 
+  // ✅ Barcode rendering
+  useEffect(() => {
+    if (!settings?.card.includeBarcode || !barcodeRef.current) return;
+    try {
+      JsBarcode(barcodeRef.current, student.matric_no, {
+        format: 'CODE128',
+        width: 1.2,
+        height: 26,
+        displayValue: false,
+        margin: 0,
+        background: '#ffffff',
+        lineColor: '#1f2937',
+      });
+    } catch (err) {
+      console.error('Barcode error:', err);
+    }
+  }, [student.matric_no, settings?.card.includeBarcode]);
+
   const waitForImages = async (element: HTMLElement) => {
     const images = Array.from(element.querySelectorAll('img'));
     await Promise.all(images.map(img => {
       if (img.complete) return Promise.resolve();
-      return new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-      });
+      return new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; });
     }));
   };
 
@@ -88,26 +90,16 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
       await waitForImages(backElement);
 
       const frontCanvas = await html2canvas(frontElement, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false
+        scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
       });
       const backCanvas = await html2canvas(backElement, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false
+        scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
       });
 
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85.6, 53.98] });
-      const frontImg = frontCanvas.toDataURL('image/png');
-      pdf.addImage(frontImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
+      pdf.addImage(frontCanvas.toDataURL('image/png'), 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
       pdf.addPage();
-      const backImg = backCanvas.toDataURL('image/png');
-      pdf.addImage(backImg, 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
+      pdf.addImage(backCanvas.toDataURL('image/png'), 'PNG', 0, 0, 85.6, 53.98, undefined, 'NONE');
       pdf.save(`${student.first_name}_${student.last_name}_ID_Card.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -126,55 +118,64 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   }
 
   const inst = settings?.institution || {
-    name: 'University of Jos',
-    address: 'Bauchi Road, Jos, Plateau State, Nigeria',
-    phone: '+234 (0) 803 000 0000',
-    website: 'www.unijos.edu.ng',
-    logo: '/unijos-logo.png',
+    name: 'University of Jos', address: 'Bauchi Road, Jos, Plateau State, Nigeria',
+    phone: '+234 (0) 803 000 0000', website: 'www.unijos.edu.ng', logo: '/unijos-logo.png',
   };
 
   const showQR = settings?.card.includeQRCode ?? true;
+  const showBarcode = settings?.card.includeBarcode ?? false;
+  const showSecurity = settings?.card.securityFeatures ?? true;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto">
-        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-              <CreditCard className="h-6 w-6" />
+        <div className="p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center space-x-2">
+              <CreditCard className="h-5 w-5 sm:h-6 sm:w-6" />
               <span>Student ID Card</span>
             </h2>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={downloadPDF}
-                className="px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors flex items-center space-x-2"
-              >
+            <div className="flex items-center gap-2">
+              <button onClick={downloadPDF}
+                className="px-3 sm:px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors flex items-center space-x-2 text-sm">
                 <Download className="h-4 w-4" />
                 <span>Download PDF</span>
               </button>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={onClose}
+                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm">
                 Close
               </button>
             </div>
           </div>
         </div>
 
-        <div className="p-8 bg-gray-50 flex flex-row flex-wrap items-start justify-center gap-6">
+        <div className="p-4 sm:p-8 bg-gray-50 flex flex-row flex-wrap items-start justify-center gap-6">
           {/* FRONT CARD */}
-          <div id="card-front" className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans">
-            <div className="h-full flex flex-col">
+          <div id="card-front"
+            className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans relative">
+
+            {/* ✅ Security watermark (behind content) */}
+            {showSecurity && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[64px] font-black text-blue-900 opacity-[0.04] -rotate-[20deg] tracking-widest select-none">
+                    UNIJOS
+                  </span>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[36px] font-black text-blue-900 opacity-[0.03] rotate-[20deg] tracking-widest select-none">
+                    OFFICIAL
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="h-full flex flex-col relative z-10">
               <div className="bg-gradient-to-r from-blue-800 to-indigo-900 text-white px-4 py-2 flex items-center gap-2">
                 {inst.logo && (
                   <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img
-                      src={inst.logo}
-                      alt="Logo"
-                      crossOrigin="anonymous"
-                      className="w-full h-full object-contain p-0.5"
-                    />
+                    <img src={inst.logo} alt="Logo" crossOrigin="anonymous"
+                      className="w-full h-full object-contain p-0.5" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -182,18 +183,14 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                   <div className="text-[7px] opacity-80">{inst.address}</div>
                 </div>
               </div>
+
               <div className="flex flex-1 p-3 gap-3">
                 <div className="flex-shrink-0">
                   <div className="w-16 h-20 bg-gray-100 rounded-lg border border-gray-200 overflow-hidden">
                     {student.photo_url ? (
-                      <img
-                        ref={photoRef}
-                        src={student.photo_url}
-                        alt={fullName}
-                        crossOrigin="anonymous"
-                        className="w-full h-full object-cover"
-                        onLoad={() => setPhotoLoaded(true)}
-                      />
+                      <img ref={photoRef} src={student.photo_url} alt={fullName}
+                        crossOrigin="anonymous" className="w-full h-full object-cover"
+                        onLoad={() => setPhotoLoaded(true)} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gray-200">
                         <User className="h-8 w-8 text-gray-400" />
@@ -225,6 +222,14 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                   </div>
                 )}
               </div>
+
+              {/* ✅ Barcode strip */}
+              {showBarcode && (
+                <div className="px-3 pb-1 flex items-end justify-center">
+                  <svg ref={barcodeRef} className="h-6 max-w-[180px]" />
+                </div>
+              )}
+
               <div className="border-t border-gray-200 px-3 py-1.5 flex justify-between items-center">
                 <span className="text-[6px] text-gray-500">Member since {issueDate}</span>
                 <span className="text-[6px] font-mono text-gray-400">{student.student_id?.slice(-6)}</span>
@@ -233,7 +238,8 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
           </div>
 
           {/* BACK CARD */}
-          <div id="card-back" className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans">
+          <div id="card-back"
+            className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans">
             <div className="h-full flex flex-col p-3">
               <div className="mb-2">
                 <h4 className="text-[9px] font-bold text-gray-800 uppercase tracking-wide">Emergency Contact</h4>
