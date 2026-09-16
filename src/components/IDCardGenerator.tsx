@@ -33,13 +33,13 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   const issueDate = formatDate(student.date_registered);
   const expiryDate = formatDate(student.expiry_date);
 
+  // ✅ CORRECT QR FORMAT: https://vsis-ten.vercel.app/verify?data=<encoded JSON>
   const qrData = useMemo(() => {
     const payload = {
       id: student.student_id,
       matric: student.matric_no,
     };
     const encoded = encodeURIComponent(JSON.stringify(payload));
-    // ✅ Uses the current origin — works on localhost AND deployed Vercel URL
     const baseUrl = window.location.origin;
     return `${baseUrl}/verify?data=${encoded}`;
   }, [student]);

@@ -113,7 +113,7 @@ export default function BatchCardGenerator() {
     const issueDate = formatDate(student.date_registered);
     const expiryDate = formatDate(student.expiry_date);
 
-    // ✅ Uses the current origin — works on localhost AND deployed Vercel URL
+    // ✅ CORRECT QR FORMAT: /verify?data=<encoded JSON>
     const payload = { id: student.student_id, matric: student.matric_no };
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const baseUrl = window.location.origin;
