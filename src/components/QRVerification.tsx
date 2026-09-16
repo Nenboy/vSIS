@@ -62,7 +62,7 @@ export default function QRVerification() {
   // Pending QR waiting for post selection
   const [pendingQrContent, setPendingQrContent] = useState<string | null>(null);
 
-  // Load posts on mount
+  // ✅ FIX 1: Load posts on mount + validate cached post
   useEffect(() => {
     const loadPosts = async () => {
       const { data } = await supabase
@@ -70,25 +70,42 @@ export default function QRVerification() {
         .select('id, name, code')
         .eq('active', true)
         .order('name', { ascending: true });
-      setPosts(data || []);
+
+      const loadedPosts = data || [];
+      setPosts(loadedPosts);
+
+      // ✅ Auto-clear cached post if it's no longer active/exists
+      const saved = localStorage.getItem('selected_verification_post');
+      if (saved) {
+        const stillValid = loadedPosts.some(p => p.id === saved);
+        if (stillValid) {
+          setSelectedPostId(saved);
+        } else {
+          console.warn('⚠️ Cached verification post is no longer active — cleared');
+          localStorage.removeItem('selected_verification_post');
+        }
+      }
     };
     loadPosts();
   }, []);
 
-  // Handle incoming QR — check if post is selected first
+  // ✅ FIX 2: Handle incoming QR — wait for posts to load, and validate cached post
   useEffect(() => {
     const qrData = searchParams.get('data');
     if (!qrData) return;
+    if (posts.length === 0) return; // wait for posts to load first
 
     const savedPost = localStorage.getItem('selected_verification_post');
-    if (savedPost) {
+    const isValidSaved = savedPost && posts.some(p => p.id === savedPost);
+
+    if (isValidSaved) {
       setSelectedPostId(savedPost);
       decodeAndVerify(qrData);
     } else {
       setPendingQrContent(qrData);
       setMode('pending-post');
     }
-  }, [searchParams]);
+  }, [searchParams, posts]);
 
   const handlePostChange = (postId: string) => {
     setSelectedPostId(postId);
