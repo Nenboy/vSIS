@@ -111,27 +111,6 @@ export default function ActivityLogs() {
     }
   };
 
-  const renderLocationLink = (location: string | undefined, accuracy: number | null | undefined) => {
-    if (!location || location === 'unavailable') {
-      return <span className="text-gray-400 text-xs">Location unavailable</span>;
-    }
-    const [lat, lng] = location.split(',').map(s => s.trim());
-    const url = `https://www.google.com/maps?q=${lat},${lng}`;
-    return (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium"
-        title={`Accuracy: ±${accuracy ?? '?'}m`}
-      >
-        <MapPin className="w-3 h-3" />
-        {location}
-        {accuracy ? ` (±${accuracy}m)` : ''}
-      </a>
-    );
-  };
-
   const formatDetails = (log: ActivityLog) => {
     const details = log.details;
     if (!details) return '-';
@@ -169,7 +148,7 @@ export default function ActivityLogs() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <div className="bg-white rounded-lg shadow-lg p-8 text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-700 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading activity logs...</p>
@@ -180,7 +159,7 @@ export default function ActivityLogs() {
 
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <div className="bg-white rounded-lg shadow-lg p-8 text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-gray-600">{error}</p>
@@ -199,36 +178,38 @@ export default function ActivityLogs() {
   const qrFailedCount = logs.filter(l => l.action === 'QR_VERIFICATION_FAILED').length;
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-600">
-          <p className="text-sm text-gray-500">Total Logs</p>
-          <p className="text-2xl font-bold text-gray-900">{logs.length}</p>
+    <div className="max-w-7xl mx-auto p-4 sm:p-6">
+      {/* Stats — 2 cols on mobile, 4 on desktop */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-blue-600">
+          <p className="text-xs sm:text-sm text-gray-500">Total Logs</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{logs.length}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-emerald-600">
-          <p className="text-sm text-gray-500">Successful Scans</p>
-          <p className="text-2xl font-bold text-emerald-700">{qrVerifiedCount}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-emerald-600">
+          <p className="text-xs sm:text-sm text-gray-500">Successful Scans</p>
+          <p className="text-xl sm:text-2xl font-bold text-emerald-700">{qrVerifiedCount}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-rose-600">
-          <p className="text-sm text-gray-500">Failed Scans</p>
-          <p className="text-2xl font-bold text-rose-700">{qrFailedCount}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-rose-600">
+          <p className="text-xs sm:text-sm text-gray-500">Failed Scans</p>
+          <p className="text-xl sm:text-2xl font-bold text-rose-700">{qrFailedCount}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-600">
-          <p className="text-sm text-gray-500">Showing</p>
-          <p className="text-2xl font-bold text-purple-700">{filteredLogs.length}</p>
+        <div className="bg-white rounded-lg shadow p-3 sm:p-4 border-l-4 border-purple-600">
+          <p className="text-xs sm:text-sm text-gray-500">Showing</p>
+          <p className="text-xl sm:text-2xl font-bold text-purple-700">{filteredLogs.length}</p>
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-lg">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+        {/* Header + filters */}
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <div className="flex items-center space-x-2">
-              <History className="h-6 w-6 text-blue-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Activity Logs</h2>
+              <History className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Activity Logs</h2>
             </div>
             <button
               onClick={fetchLogs}
-              className="px-4 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 flex items-center space-x-2 transition-colors"
+              className="px-3 sm:px-4 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 flex items-center space-x-2 transition-colors"
             >
               <RefreshCw className="h-4 w-4" />
               <span>Refresh</span>
@@ -292,106 +273,163 @@ export default function ActivityLogs() {
           )}
         </div>
 
-        <div className="overflow-x-auto">
-          {filteredLogs.length === 0 ? (
-            <div className="text-center py-12">
-              <History className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No activity found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {logs.length === 0
-                  ? 'Actions will appear here as the system is used.'
-                  : 'Try adjusting your filters.'}
-              </p>
-            </div>
-          ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Post</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location (Click for Map)</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLogs.map((log) => {
-                  const { icon: Icon, color, label } = getActionConfig(log.action);
-                  const detailsText = formatDetails(log);
-                  const isQR = log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED';
+        {filteredLogs.length === 0 ? (
+          <div className="text-center py-12">
+            <History className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No activity found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {logs.length === 0
+                ? 'Actions will appear here as the system is used.'
+                : 'Try adjusting your filters.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* ============ DESKTOP TABLE (md and up) ============ */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification Post</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredLogs.map((log) => {
+                    const { icon: Icon, color, label } = getActionConfig(log.action);
+                    const detailsText = formatDetails(log);
+                    const isQR = log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED';
 
-                  return (
-                    <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-900">{log.user_email}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${color}`}>
-                          <Icon className="h-3 w-3 mr-1" />
-                          <span>{label}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
-                        {detailsText ? (
-                          <div className="truncate" title={JSON.stringify(log.details, null, 2)}>
-                            {detailsText}
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <User className="h-4 w-4 text-gray-400 mr-2" />
+                            <span className="text-sm text-gray-900">{log.user_email}</span>
                           </div>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {log.details?.student_name && (
-                              <p className="font-medium text-gray-900">
-                                {log.details.student_name}
-                              </p>
-                            )}
-                            {log.details?.matric_no && (
-                              <p className="text-xs font-mono text-gray-500">
-                                {log.details.matric_no}
-                              </p>
-                            )}
-                            {log.details?.reason && (
-                              <p className="text-xs text-rose-600">
-                                {log.details.reason}
-                              </p>
-                            )}
-                            {log.details?.bulk && (
-                              <span className="inline-block text-[10px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-                                bulk
-                              </span>
-                            )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${color}`}>
+                            <Icon className="h-3 w-3 mr-1" />
+                            <span>{label}</span>
                           </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {isQR && log.details?.post && log.details.post !== 'Unspecified' ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                            <MapPin className="w-3 h-3 text-blue-500" />
-                            {log.details.post}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {isQR ? (
-                          renderLocationLink(log.details?.location, log.details?.accuracy_m)
-                        ) : (
-                          <span className="text-gray-300 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
+                          {detailsText ? (
+                            <div className="truncate" title={JSON.stringify(log.details, null, 2)}>
+                              {detailsText}
+                            </div>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {log.details?.student_name && (
+                                <p className="font-medium text-gray-900">{log.details.student_name}</p>
+                              )}
+                              {log.details?.matric_no && (
+                                <p className="text-xs font-mono text-gray-500">{log.details.matric_no}</p>
+                              )}
+                              {log.details?.reason && (
+                                <p className="text-xs text-rose-600">{log.details.reason}</p>
+                              )}
+                              {log.details?.bulk && (
+                                <span className="inline-block text-[10px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                                  bulk
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {isQR && log.details?.post && log.details.post !== 'Unspecified' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-blue-50 px-2 py-1 rounded">
+                              <MapPin className="w-3 h-3 text-blue-600" />
+                              {log.details.post}
+                            </span>
+                          ) : isQR ? (
+                            <span className="text-xs text-gray-400 italic">Unspecified</span>
+                          ) : (
+                            <span className="text-gray-300 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(log.created_at)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ============ MOBILE CARDS (below md) ============ */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {filteredLogs.map((log) => {
+                const { icon: Icon, color, label } = getActionConfig(log.action);
+                const detailsText = formatDetails(log);
+                const isQR = log.action === 'QR_VERIFICATION' || log.action === 'QR_VERIFICATION_FAILED';
+
+                return (
+                  <div key={log.id} className="p-4 space-y-2">
+                    {/* Top row: action badge + timestamp */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold ${color}`}>
+                        <Icon className="h-3 w-3 mr-1" />
+                        <span>{label}</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">
                         {formatDate(log.created_at)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+                      </span>
+                    </div>
+
+                    {/* User */}
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <User className="h-3 w-3" />
+                      <span className="truncate">{log.user_email}</span>
+                    </div>
+
+                    {/* Details */}
+                    {detailsText ? (
+                      <p className="text-sm text-gray-800">{detailsText}</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {log.details?.student_name && (
+                          <p className="text-sm font-semibold text-gray-900">
+                            {log.details.student_name}
+                          </p>
+                        )}
+                        {log.details?.matric_no && (
+                          <p className="text-xs font-mono text-gray-500">
+                            {log.details.matric_no}
+                          </p>
+                        )}
+                        {log.details?.reason && (
+                          <p className="text-xs text-rose-600">
+                            {log.details.reason}
+                          </p>
+                        )}
+                        {log.details?.bulk && (
+                          <span className="inline-block text-[10px] font-bold uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                            bulk
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Post (for QR) */}
+                    {isQR && log.details?.post && log.details.post !== 'Unspecified' && (
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded w-fit">
+                        <MapPin className="w-3 h-3" />
+                        {log.details.post}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

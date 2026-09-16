@@ -33,74 +33,11 @@ interface BulkResult {
   reason?: string;
 }
 
-interface GeoLocation {
-  lat: number;
-  lng: number;
-  accuracy: number;
-}
-
 interface VerificationPost {
   id: string;
   name: string;
   code: string | null;
 }
-
-// ============================================================
-// ✅ HYBRID LOCATION SYSTEM
-// ============================================================
-let cachedLocation: { loc: GeoLocation; timestamp: number } | null = null;
-const LOCATION_CACHE_MS = 2 * 60 * 1000;
-
-const getLocation = (): Promise<GeoLocation | null> => {
-  return new Promise((resolve) => {
-    if (cachedLocation && Date.now() - cachedLocation.timestamp < LOCATION_CACHE_MS) {
-      console.log('📍 Using cached location:', cachedLocation.loc);
-      return resolve(cachedLocation.loc);
-    }
-
-    if (!navigator.geolocation) {
-      console.warn('❌ GPS: not supported');
-      return resolve(null);
-    }
-
-    let best: GeoLocation | null = null;
-    let resolved = false;
-    let watchId: number | null = null;
-
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-
-      if (best) {
-        cachedLocation = { loc: best, timestamp: Date.now() };
-        console.log('✅ Best location found:', best);
-      } else {
-        console.warn('❌ No location fix obtained');
-      }
-      resolve(best);
-    };
-
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const candidate: GeoLocation = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: Math.round(pos.coords.accuracy),
-        };
-        if (!best || candidate.accuracy < best.accuracy) {
-          best = candidate;
-          console.log(`📍 Location update: accuracy ±${candidate.accuracy}m`);
-        }
-        if (candidate.accuracy <= 30) finish();
-      },
-      (err) => console.warn('⚠️ Geolocation watch error:', err.code, err.message),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-
-    setTimeout(finish, 6000);
-  });
-};
 
 export default function QRVerification() {
   const [searchParams] = useSearchParams();
@@ -118,11 +55,11 @@ export default function QRVerification() {
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const dragCounter = useRef(0);
 
-  // ✅ Verification Posts
+  // Verification Posts
   const [posts, setPosts] = useState<VerificationPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string>('');
 
-  // ✅ Pending QR waiting for post selection
+  // Pending QR waiting for post selection
   const [pendingQrContent, setPendingQrContent] = useState<string | null>(null);
 
   // Load posts on mount
@@ -138,18 +75,16 @@ export default function QRVerification() {
     loadPosts();
   }, []);
 
-  // ✅ Handle incoming QR — check if post is selected first
+  // Handle incoming QR — check if post is selected first
   useEffect(() => {
     const qrData = searchParams.get('data');
     if (!qrData) return;
 
     const savedPost = localStorage.getItem('selected_verification_post');
     if (savedPost) {
-      // Post already declared for this session → verify immediately
       setSelectedPostId(savedPost);
       decodeAndVerify(qrData);
     } else {
-      // First scan of the shift → require post declaration
       setPendingQrContent(qrData);
       setMode('pending-post');
     }
@@ -169,7 +104,6 @@ export default function QRVerification() {
     return post?.name || 'Unspecified';
   };
 
-  // ✅ Called when officer confirms the post on the pending-post screen
   const handlePendingPostContinue = async () => {
     if (!selectedPostId) return;
     localStorage.setItem('selected_verification_post', selectedPostId);
@@ -261,8 +195,6 @@ export default function QRVerification() {
 
   const verifySingle = async (qrContent: string) => {
     const identifier = extractIdentifier(qrContent);
-    const loc = await getLocation();
-    const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
     const post = getSelectedPostName();
 
     if (!identifier) {
@@ -271,8 +203,6 @@ export default function QRVerification() {
       await logActivity('QR_VERIFICATION_FAILED', 'student', 'unknown', {
         result: 'failed',
         reason: 'Invalid QR format',
-        location: locationString,
-        accuracy_m: loc?.accuracy ?? null,
         post,
         email: 'public-verifier',
       });
@@ -286,8 +216,6 @@ export default function QRVerification() {
       await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
         result: 'failed',
         reason: 'Student not in database',
-        location: locationString,
-        accuracy_m: loc?.accuracy ?? null,
         post,
         email: 'public-verifier',
       });
@@ -299,8 +227,6 @@ export default function QRVerification() {
           student_name: result.full_name,
           matric_no: result.matric_no,
           department: result.department,
-          location: locationString,
-          accuracy_m: loc?.accuracy ?? null,
           post,
           email: 'public-verifier',
         });
@@ -310,8 +236,6 @@ export default function QRVerification() {
           reason: `Student status: ${result.status}`,
           student_name: result.full_name,
           matric_no: result.matric_no,
-          location: locationString,
-          accuracy_m: loc?.accuracy ?? null,
           post,
           email: 'public-verifier',
         });
@@ -414,11 +338,7 @@ export default function QRVerification() {
     setBulkResults([]);
     setBulkProgress({ current: 0, total: 0 });
 
-    const loc = await getLocation();
-    const locationString = loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : 'unavailable';
-    const accuracy = loc?.accuracy ?? null;
     const post = getSelectedPostName();
-
     const results: BulkResult[] = [];
 
     type Job = { label: string; getCanvas: () => Promise<HTMLCanvasElement> };
@@ -450,7 +370,7 @@ export default function QRVerification() {
           results.push({ identifier: file.name, status: 'invalid', reason: 'Failed to read PDF' });
           await logActivity('QR_VERIFICATION_FAILED', 'student', file.name, {
             result: 'failed', reason: 'Failed to read PDF',
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
         }
@@ -475,7 +395,7 @@ export default function QRVerification() {
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
             result: 'failed', reason: 'No QR code found',
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
           continue;
@@ -487,7 +407,7 @@ export default function QRVerification() {
           setBulkResults([...results]);
           await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
             result: 'failed', reason: 'Invalid QR format',
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
           continue;
@@ -498,7 +418,7 @@ export default function QRVerification() {
           results.push({ identifier: job.label, status: 'invalid', reason: 'Not in database' });
           await logActivity('QR_VERIFICATION_FAILED', 'student', identifier, {
             result: 'failed', reason: 'Student not in database',
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
         } else if (student.status !== 'active') {
@@ -506,7 +426,7 @@ export default function QRVerification() {
           await logActivity('QR_VERIFICATION_FAILED', 'student', student.student_id, {
             result: 'failed', reason: `Student status: ${student.status}`,
             student_name: student.full_name, matric_no: student.matric_no,
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
         } else {
@@ -514,7 +434,7 @@ export default function QRVerification() {
           await logActivity('QR_VERIFICATION', 'student', student.student_id, {
             result: 'verified', student_name: student.full_name,
             matric_no: student.matric_no, department: student.department,
-            location: locationString, accuracy_m: accuracy, post,
+            post,
             email: 'public-verifier', bulk: true,
           });
         }
@@ -522,7 +442,7 @@ export default function QRVerification() {
         results.push({ identifier: job.label, status: 'invalid', reason: err.message });
         await logActivity('QR_VERIFICATION_FAILED', 'student', job.label, {
           result: 'failed', reason: err.message || 'Processing error',
-          location: locationString, accuracy_m: accuracy, post,
+          post,
           email: 'public-verifier', bulk: true,
         });
       }
@@ -593,7 +513,7 @@ export default function QRVerification() {
     navigate('/verify', { replace: true });
   };
 
-  // ================= PENDING POST (First scan of the shift) =================
+  // ================= PENDING POST =================
   if (mode === 'pending-post') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 flex items-center justify-center">
@@ -701,11 +621,11 @@ export default function QRVerification() {
                 </select>
                 {selectedPostId ? (
                   <p className="text-xs text-blue-700 mt-2">
-                    Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
+                    ✅ Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
                   </p>
                 ) : posts.length > 0 ? (
                   <p className="text-xs text-amber-600 mt-2">
-                    No post selected — verifications will be logged as "Unspecified"
+                    ⚠️ No post selected — verifications will be logged as "Unspecified"
                   </p>
                 ) : null}
               </div>
@@ -760,13 +680,6 @@ export default function QRVerification() {
                   <FileText className="w-3.5 h-3.5" />
                   <span>PDF (single or batch)</span>
                 </div>
-              </div>
-
-              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <MapPin className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
-                  Your browser will request location access. This logs the geographic location of each verification for the university's audit trail.
-                </p>
               </div>
 
               <div className="relative">
@@ -1055,7 +968,7 @@ export default function QRVerification() {
               )}
             </div>
 
-            {/* ✅ Show post name on the result */}
+            {/* Show post on result */}
             <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-gray-600">
               <MapPin className="w-3 h-3 text-blue-600" />
               <span>Verified at: <strong>{getSelectedPostName()}</strong></span>

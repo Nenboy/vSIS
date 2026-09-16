@@ -88,8 +88,21 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
       const currentYear = new Date().getFullYear().toString();
       const studentId = generateStudentId(data.department, currentYear);
 
-      // Use settings validity years (default to 4 if not loaded)
-      const validityYears = settings?.card?.validityYears ?? 4;
+      // Smart expiry based on level
+      const getValidityYears = (level: string, defaultYears: number): number => {
+        switch (level) {
+          case '100 Level': return 4;
+          case '200 Level': return 3;
+          case '300 Level': return 2;
+          case '400 Level': return 1;
+          case '500 Level': return 1;
+          case 'Postgraduate': return 2;
+          default: return defaultYears;
+        }
+      };
+
+      const defaultYears = settings?.card?.validityYears ?? 4;
+      const validityYears = getValidityYears(data.level, defaultYears);
       const expiryDate = new Date();
       expiryDate.setFullYear(expiryDate.getFullYear() + validityYears);
 
@@ -125,12 +138,11 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
 
       if (insertError) throw insertError;
 
-      // ✅ Log the creation
       await logActivity('CREATE_STUDENT', 'student', studentId, {
         name: `${data.first_name} ${data.last_name}`,
         matric_no: data.matric_no,
         department: data.department,
-        level: data.level
+        level: data.level,
       });
 
       reset();
@@ -138,7 +150,6 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
       setPhotoFile(null);
       onSuccess();
     } catch (err: any) {
-      // ✅ REVEAL THE REAL ERROR
       console.error('🔴 REGISTRATION ERROR:', err);
       setError(err.message || 'Failed to register student. Please try again.');
     } finally {
@@ -146,10 +157,9 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
     }
   };
 
-  // Show loading while settings are being fetched
   if (settingsLoading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6">
         <div className="bg-white rounded-lg shadow-lg p-8 text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-700 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading student register...</p>
@@ -159,33 +169,33 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-lg shadow-lg p-8">
-        <div className="flex items-center space-x-3 mb-8">
-          <UserPlus className="h-8 w-8 text-blue-700" />
-          <h2 className="text-3xl font-bold text-gray-900">Register New Student</h2>
+    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+      <div className="bg-white rounded-lg shadow-lg p-4 sm:p-8">
+        <div className="flex items-center space-x-3 mb-6 sm:mb-8">
+          <UserPlus className="h-7 w-7 sm:h-8 sm:w-8 text-blue-700" />
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Register New Student</h2>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-2">
-            <AlertCircle className="h-5 w-5 text-red-600" />
-            <span className="text-red-700">{error}</span>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <span className="text-red-700 text-sm">{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-          {/* Photo Upload Section */}
-          <div className="bg-gray-50 rounded-lg p-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 sm:space-y-8">
+          {/* Photo Upload Section — stacks vertically on mobile */}
+          <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Student Photo</h3>
-            <div className="flex items-center space-x-6">
-              <div className="w-32 h-40 bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+              <div className="w-32 h-40 bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden shadow-sm mx-auto sm:mx-0">
                 {photoPreview ? (
                   <img src={photoPreview} alt="Student photo preview" className="w-full h-full object-cover" />
                 ) : (
                   <Upload className="h-8 w-8 text-gray-400" />
                 )}
               </div>
-              <div>
+              <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Upload Photo (Optional)</label>
                 <input
                   type="file"
@@ -198,8 +208,8 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
             </div>
           </div>
 
-          {/* Form Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Form Fields — 1 col mobile, 2 col tablet, 3 col desktop */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Matric Number *</label>
               <input {...register('matric_no')} type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g., 20/1234" />
@@ -251,7 +261,7 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
-              <input {...register('phone')} type="tel" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="+1 (555) 123-4567" />
+              <input {...register('phone')} type="tel" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="+234..." />
               {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>}
             </div>
             <div>
@@ -265,7 +275,7 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Address *</label>
-              <input {...register('address')} type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="123 Main St, City, State, ZIP" />
+              <input {...register('address')} type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="123 Main St, City, State" />
               {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
             </div>
             <div>
@@ -275,12 +285,13 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Phone *</label>
-              <input {...register('emergency_phone')} type="tel" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="+1 (555) 987-6543" />
+              <input {...register('emergency_phone')} type="tel" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="+234..." />
               {errors.emergency_phone && <p className="mt-1 text-sm text-red-600">{errors.emergency_phone.message}</p>}
             </div>
           </div>
 
-          <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+          {/* Buttons — stack vertically on mobile */}
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:space-x-4 pt-6 border-t border-gray-200">
             <button
               type="button"
               onClick={() => {
@@ -289,14 +300,14 @@ export default function StudentRegistration({ onSuccess }: StudentRegistrationPr
                 setPhotoFile(null);
                 setError(null);
               }}
-              className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors focus:outline-none"
+              className="w-full sm:w-auto px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors focus:outline-none"
             >
               Clear Form
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-8 py-3 bg-blue-700 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center space-x-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full sm:w-auto px-8 py-3 bg-blue-700 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <Save className="h-4 w-4" />
               <span>{loading ? 'Registering...' : 'Register Student'}</span>
