@@ -110,7 +110,6 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6">
       <div className="bg-white rounded-lg shadow-lg">
-        {/* Header + Filters */}
         <div className="p-4 sm:p-6 border-b border-gray-200">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4 sm:mb-6">
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Student Records</h2>
@@ -119,7 +118,6 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
             </div>
           </div>
 
-          {/* Filters — stack on mobile */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -179,7 +177,7 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
           </div>
         ) : (
           <>
-            {/* ============ DESKTOP TABLE (md and up) ============ */}
+            {/* DESKTOP TABLE */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
@@ -253,11 +251,14 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
               </table>
             </div>
 
-            {/* ============ MOBILE CARDS (below md) ============ */}
+            {/* ✅ MOBILE CARDS with staggered fade-in-up */}
             <div className="md:hidden divide-y divide-gray-100">
-              {filteredStudents.map((student) => (
-                <div key={student.id} className="p-4">
-                  {/* Top: photo + name + status */}
+              {filteredStudents.map((student, index) => (
+                <div
+                  key={student.id}
+                  className="p-4 animate-fade-in-up"
+                  style={{ animationDelay: `${Math.min(index * 40, 400)}ms`, animationFillMode: 'both' }}
+                >
                   <div className="flex items-start gap-3 mb-3">
                     <div className="h-14 w-14 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
                       {student.photo_url ? (
@@ -286,7 +287,6 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
                     </div>
                   </div>
 
-                  {/* Details row */}
                   <div className="flex items-center gap-3 text-xs text-gray-600 mb-3">
                     <div className="flex items-center gap-1">
                       <GraduationCap className="w-3.5 h-3.5 text-gray-400" />
@@ -296,7 +296,6 @@ export default function StudentList({ onViewCard, onEditStudent, refreshKey }: S
                     <span>{student.level}</span>
                   </div>
 
-                  {/* Action buttons — full width row */}
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => onViewCard(student)}

@@ -120,7 +120,6 @@ function App() {
   }
 
   const renderContent = () => {
-    // ✅ adminOnlyTabs now includes 'settings' and 'profile' is student-only
     const adminOnlyTabs = ['dashboard', 'register', 'search', 'students', 'cards', 'activity', 'settings'];
     const studentOnlyTabs = ['profile'];
 
@@ -183,7 +182,6 @@ function App() {
           </div>
         );
 
-      // ✅ NEW: Student-only Profile page
       case 'profile':
         return <StudentProfile />;
 
@@ -201,7 +199,6 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Content wrapper — offset by sidebar (desktop) and top bar (mobile) */}
       <div className="md:ml-16 pt-14 md:pt-0">
         {showSuccess && (
           <div className="fixed top-16 md:top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-slide-in">
@@ -209,7 +206,8 @@ function App() {
           </div>
         )}
 
-        <main className="py-4 sm:py-8">
+        {/* ✅ fade-in on tab change (key forces remount) */}
+        <main className="py-4 sm:py-8 animate-fade-in" key={activeTab}>
           {renderContent()}
         </main>
       </div>

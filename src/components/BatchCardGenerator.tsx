@@ -75,7 +75,6 @@ export default function BatchCardGenerator() {
     }
   };
 
-  // ✅ Generate barcode as data URL for inline HTML
   const generateBarcodeDataUrl = async (data: string): Promise<string> => {
     try {
       const canvas = document.createElement('canvas');
@@ -98,9 +97,7 @@ export default function BatchCardGenerator() {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+      year: 'numeric', month: 'short', day: 'numeric'
     });
   };
 
@@ -134,14 +131,11 @@ export default function BatchCardGenerator() {
     const issueDate = formatDate(student.date_registered);
     const expiryDate = formatDate(student.expiry_date);
 
-    // QR
     const payload = { id: student.student_id, matric: student.matric_no };
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const baseUrl = window.location.origin;
     const qrData = `${baseUrl}/verify?data=${encoded}`;
     const qrCodeUrl = settings.card.includeQRCode ? await generateQRCode(qrData) : '';
-
-    // ✅ Barcode
     const barcodeUrl = settings.card.includeBarcode
       ? await generateBarcodeDataUrl(student.matric_no)
       : '';
@@ -205,11 +199,6 @@ export default function BatchCardGenerator() {
           </div>
           ` : ''}
         </div>
-        ${settings.card.includeBarcode && barcodeUrl ? `
-          <div style="padding:2px 12px 4px 12px; display:flex; justify-content:center; align-items:center;">
-            <img src="${barcodeUrl}" style="height:24px; max-width:180px; object-fit:contain;" />
-          </div>
-        ` : ''}
         <div style="border-top:1px solid #e5e7eb; padding:6px 12px; display:flex; justify-content:space-between;">
           <span style="font-size:6px; color:#6b7280;">Member since ${issueDate}</span>
           <span style="font-size:6px; font-family:monospace; color:#9ca3af;">${student.student_id?.slice(-6)}</span>
@@ -217,7 +206,7 @@ export default function BatchCardGenerator() {
       </div>
     `;
 
-    // Back card
+    // Back card — barcode now lives here
     const backCard = document.createElement('div');
     backCard.style.width = '340px';
     backCard.style.height = '215px';
@@ -236,7 +225,7 @@ export default function BatchCardGenerator() {
             <div>${student.emergency_phone || 'N/A'}</div>
           </div>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:7px; color:#4b5563; margin-bottom:8px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:7px; color:#4b5563; margin-bottom:6px;">
           <div>
             <strong>${settings.institution.phone}</strong><br/>
             <span style="font-size:6px;">${settings.institution.website}</span>
@@ -246,15 +235,20 @@ export default function BatchCardGenerator() {
             <strong>Expires</strong><br/>${expiryDate}
           </div>
         </div>
-        <div style="border-top:1px dashed #d1d5db; padding-top:4px; margin-bottom:8px;">
+        <div style="border-top:1px dashed #d1d5db; padding-top:4px; margin-bottom:4px;">
           <div style="font-size:7px; color:#6b7280;">AUTHORIZED SIGNATURE</div>
-          <div style="height:16px; border-bottom:1px solid #9ca3af; width:120px;"></div>
+          <div style="height:14px; border-bottom:1px solid #9ca3af; width:120px;"></div>
         </div>
+        ${settings.card.includeBarcode && barcodeUrl ? `
+          <div style="display:flex; justify-content:center; align-items:center; padding:2px 0;">
+            <img src="${barcodeUrl}" style="height:32px; max-width:200px; object-fit:contain;" />
+          </div>
+        ` : ''}
         <div style="font-size:6px; color:#6b7280; text-align:center; margin-top:auto;">
           <div>This card is non-transferable and must be carried at all times while on campus.</div>
           <div>This card remains the property of the institution and must be presented upon request.</div>
         </div>
-        <div style="margin-top:8px; text-align:center; font-size:8px; font-family:monospace; color:#9ca3af; border-top:1px solid #f3f4f6; padding-top:4px;">
+        <div style="margin-top:4px; text-align:center; font-size:8px; font-family:monospace; color:#9ca3af; border-top:1px solid #f3f4f6; padding-top:4px;">
           ${student.student_id} • ${session}
         </div>
       </div>

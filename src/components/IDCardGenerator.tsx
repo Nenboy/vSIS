@@ -54,14 +54,13 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     return () => { cancelled = true; };
   }, [qrData, settings?.card.includeQRCode]);
 
-  // ✅ Barcode rendering
   useEffect(() => {
     if (!settings?.card.includeBarcode || !barcodeRef.current) return;
     try {
       JsBarcode(barcodeRef.current, student.matric_no, {
         format: 'CODE128',
-        width: 1.2,
-        height: 26,
+        width: 1.4,
+        height: 32,
         displayValue: false,
         margin: 0,
         background: '#ffffff',
@@ -128,7 +127,8 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto">
+      {/* ✅ scale-in animation on modal content */}
+      <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto animate-scale-in">
         <div className="p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center space-x-2">
@@ -154,7 +154,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
           <div id="card-front"
             className="w-[340px] h-[215px] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200 flex-shrink-0 font-sans relative">
 
-            {/* ✅ Security watermark (behind content) */}
             {showSecurity && (
               <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -223,13 +222,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                 )}
               </div>
 
-              {/* ✅ Barcode strip */}
-              {showBarcode && (
-                <div className="px-3 pb-1 flex items-end justify-center">
-                  <svg ref={barcodeRef} className="h-6 max-w-[180px]" />
-                </div>
-              )}
-
               <div className="border-t border-gray-200 px-3 py-1.5 flex justify-between items-center">
                 <span className="text-[6px] text-gray-500">Member since {issueDate}</span>
                 <span className="text-[6px] font-mono text-gray-400">{student.student_id?.slice(-6)}</span>
@@ -248,6 +240,7 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                   <p>{student.emergency_phone || 'N/A'}</p>
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-2 text-[7px] text-gray-600 mb-2">
                 <div>
                   <p className="font-semibold">{inst.phone}</p>
@@ -260,15 +253,23 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                   <p>{expiryDate}</p>
                 </div>
               </div>
-              <div className="border-t border-dashed border-gray-300 pt-1 mb-2">
+
+              <div className="border-t border-dashed border-gray-300 pt-1 mb-1">
                 <p className="text-[7px] text-gray-500">AUTHORIZED SIGNATURE</p>
-                <div className="h-5 border-b border-gray-400 w-32 mt-0.5"></div>
+                <div className="h-4 border-b border-gray-400 w-32 mt-0.5"></div>
               </div>
+
+              {showBarcode && (
+                <div className="flex items-center justify-center py-1 mb-1">
+                  <svg ref={barcodeRef} className="h-8 max-w-[200px]" />
+                </div>
+              )}
+
               <div className="text-[6px] text-gray-500 leading-tight text-center mt-auto">
                 <p>This card is non-transferable and must be carried at all times while on campus.</p>
                 <p>This card remains the property of the institution and must be presented upon request.</p>
               </div>
-              <div className="mt-2 text-center text-[8px] font-mono text-gray-400 border-t border-gray-100 pt-1">
+              <div className="mt-1 text-center text-[8px] font-mono text-gray-400 border-t border-gray-100 pt-1">
                 {student.student_id} • {session}
               </div>
             </div>
