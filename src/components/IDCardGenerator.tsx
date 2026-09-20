@@ -43,8 +43,11 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     let cancelled = false;
     if (!settings?.card.includeQRCode) { setQrLoading(false); return; }
     setQrLoading(true);
+    // Higher resolution for sharper QR in PDF
     QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H', width: 400, margin: 2,
+      errorCorrectionLevel: 'H',
+      width: 800,
+      margin: 1,
     }).then(url => {
       if (!cancelled) { setQrCodeUrl(url); setQrLoading(false); }
     }).catch(err => {
@@ -88,11 +91,12 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
       await waitForImages(frontElement);
       await waitForImages(backElement);
 
+      // Scale 4 for high-resolution QR in PDF
       const frontCanvas = await html2canvas(frontElement, {
-        scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
+        scale: 4, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
       });
       const backCanvas = await html2canvas(backElement, {
-        scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
+        scale: 4, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
       });
 
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [85.6, 53.98] });
@@ -127,7 +131,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      {/* ✅ scale-in animation on modal content */}
       <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-auto animate-scale-in">
         <div className="p-4 sm:p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div className="flex items-center justify-between flex-wrap gap-3">

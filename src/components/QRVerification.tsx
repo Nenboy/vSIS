@@ -39,6 +39,56 @@ interface VerificationPost {
   code: string | null;
 }
 
+// ------------------------------------------------------------------
+// QR decoding helper — tries multiple strategies for reliability
+// ------------------------------------------------------------------
+const tryDecodeFromCanvas = (canvas: HTMLCanvasElement): string | null => {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  // Attempt 1: direct decode
+  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let qrCode = jsQR(imageData.data, canvas.width, canvas.height, {
+    inversionAttempts: 'attemptBoth',
+  });
+  if (qrCode?.data) return qrCode.data;
+
+  // Attempt 2: grayscale + contrast boost
+  const boosted = new ImageData(
+    new Uint8ClampedArray(imageData.data),
+    canvas.width,
+    canvas.height
+  );
+  const d = boosted.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // Luminance
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    // Contrast boost: push dark pixels to black and light pixels to white
+    const v = gray < 128 ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  qrCode = jsQR(boosted.data, canvas.width, canvas.height, {
+    inversionAttempts: 'attemptBoth',
+  });
+  if (qrCode?.data) return qrCode.data;
+
+  // Attempt 3: downscale by half (sometimes helps with over-sharpened PDFs)
+  const halfCanvas = document.createElement('canvas');
+  halfCanvas.width = Math.floor(canvas.width / 2);
+  halfCanvas.height = Math.floor(canvas.height / 2);
+  const halfCtx = halfCanvas.getContext('2d');
+  if (halfCtx) {
+    halfCtx.drawImage(canvas, 0, 0, halfCanvas.width, halfCanvas.height);
+    imageData = halfCtx.getImageData(0, 0, halfCanvas.width, halfCanvas.height);
+    qrCode = jsQR(imageData.data, halfCanvas.width, halfCanvas.height, {
+      inversionAttempts: 'attemptBoth',
+    });
+    if (qrCode?.data) return qrCode.data;
+  }
+
+  return null;
+};
+
 export default function QRVerification() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -55,14 +105,11 @@ export default function QRVerification() {
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const dragCounter = useRef(0);
 
-  // Verification Posts
   const [posts, setPosts] = useState<VerificationPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string>('');
-
-  // Pending QR waiting for post selection
   const [pendingQrContent, setPendingQrContent] = useState<string | null>(null);
 
-  // ✅ FIX 1: Load posts on mount + validate cached post
+  // Load posts and validate cached post
   useEffect(() => {
     const loadPosts = async () => {
       const { data } = await supabase
@@ -74,14 +121,12 @@ export default function QRVerification() {
       const loadedPosts = data || [];
       setPosts(loadedPosts);
 
-      // ✅ Auto-clear cached post if it's no longer active/exists
       const saved = localStorage.getItem('selected_verification_post');
       if (saved) {
         const stillValid = loadedPosts.some(p => p.id === saved);
         if (stillValid) {
           setSelectedPostId(saved);
         } else {
-          console.warn('⚠️ Cached verification post is no longer active — cleared');
           localStorage.removeItem('selected_verification_post');
         }
       }
@@ -89,11 +134,11 @@ export default function QRVerification() {
     loadPosts();
   }, []);
 
-  // ✅ FIX 2: Handle incoming QR — wait for posts to load, and validate cached post
+  // Handle incoming QR
   useEffect(() => {
     const qrData = searchParams.get('data');
     if (!qrData) return;
-    if (posts.length === 0) return; // wait for posts to load first
+    if (posts.length === 0) return;
 
     const savedPost = localStorage.getItem('selected_verification_post');
     const isValidSaved = savedPost && posts.some(p => p.id === savedPost);
@@ -138,7 +183,6 @@ export default function QRVerification() {
     }
   };
 
-  // ---------- Single verification ----------
   const decodeAndVerify = async (qrContent: string) => {
     setLoading(true);
     setError(null);
@@ -261,16 +305,6 @@ export default function QRVerification() {
     setLoading(false);
   };
 
-  const tryDecodeFromCanvas = (canvas: HTMLCanvasElement): string | null => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const qrCode = jsQR(imageData.data, canvas.width, canvas.height, {
-      inversionAttempts: 'attemptBoth',
-    });
-    return qrCode?.data || null;
-  };
-
   const imageFileToCanvas = (file: File): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -278,7 +312,7 @@ export default function QRVerification() {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const maxDim = 2000;
+          const maxDim = 2500;
           let w = img.width, h = img.height;
           if (w > maxDim || h > maxDim) {
             const ratio = Math.min(maxDim / w, maxDim / h);
@@ -317,7 +351,8 @@ export default function QRVerification() {
         for (let p = 1; p <= maxPages; p++) {
           setStatusText(`Scanning page ${p} of ${pdf.numPages}...`);
           const page = await pdf.getPage(p);
-          const viewport = page.getViewport({ scale: 6 });
+          // Scale 8 for higher-resolution QR detection
+          const viewport = page.getViewport({ scale: 8 });
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;
@@ -328,7 +363,9 @@ export default function QRVerification() {
           if (qrContent) { foundQr = qrContent; break; }
         }
 
-        if (!foundQr) throw new Error('No QR code detected in the PDF. Try a higher-quality PDF or upload a screenshot.');
+        if (!foundQr) {
+          throw new Error('No QR code detected in the PDF. Try a higher-quality PDF or upload a screenshot.');
+        }
         await verifySingle(foundQr);
         return;
       }
@@ -372,7 +409,8 @@ export default function QRVerification() {
               label: `${file.name} - page ${p}`,
               getCanvas: async () => {
                 const page = await pdf.getPage(p);
-                const viewport = page.getViewport({ scale: 6 });
+                // Scale 8 for higher-resolution QR detection
+                const viewport = page.getViewport({ scale: 8 });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
@@ -638,11 +676,11 @@ export default function QRVerification() {
                 </select>
                 {selectedPostId ? (
                   <p className="text-xs text-blue-700 mt-2">
-                    ✅ Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
+                    Verifications will be logged as: <strong>{getSelectedPostName()}</strong>
                   </p>
                 ) : posts.length > 0 ? (
                   <p className="text-xs text-amber-600 mt-2">
-                    ⚠️ No post selected — verifications will be logged as "Unspecified"
+                    No post selected — verifications will be logged as "Unspecified"
                   </p>
                 ) : null}
               </div>
@@ -980,12 +1018,11 @@ export default function QRVerification() {
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-xs font-bold text-green-700 tracking-wide">VERIFIED ✓</span>
+                  <span className="text-xs font-bold text-green-700 tracking-wide">VERIFIED</span>
                 </>
               )}
             </div>
 
-            {/* Show post on result */}
             <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-gray-600">
               <MapPin className="w-3 h-3 text-blue-600" />
               <span>Verified at: <strong>{getSelectedPostName()}</strong></span>
@@ -1004,7 +1041,7 @@ export default function QRVerification() {
 
         <div className="text-center mt-6">
           <button onClick={reset} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-            ← Verify another ID
+            Verify another ID
           </button>
         </div>
       </div>

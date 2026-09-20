@@ -66,7 +66,7 @@ export default function BatchCardGenerator() {
     try {
       return await QRCode.toDataURL(data, {
         errorCorrectionLevel: 'H',
-        width: 800,
+        width: 1200,
         margin: 1,
       });
     } catch (error) {
@@ -140,7 +140,6 @@ export default function BatchCardGenerator() {
       ? await generateBarcodeDataUrl(student.matric_no)
       : '';
 
-    // Front card
     const frontCard = document.createElement('div');
     frontCard.style.position = 'relative';
     frontCard.style.width = '340px';
@@ -206,7 +205,6 @@ export default function BatchCardGenerator() {
       </div>
     `;
 
-    // Back card — barcode now lives here
     const backCard = document.createElement('div');
     backCard.style.width = '340px';
     backCard.style.height = '215px';
@@ -261,8 +259,9 @@ export default function BatchCardGenerator() {
     await waitForImages(backCard);
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    const frontCanvas = await html2canvas(frontCard, { scale: 4, backgroundColor: '#fff', useCORS: true, allowTaint: false });
-    const backCanvas = await html2canvas(backCard, { scale: 4, backgroundColor: '#fff', useCORS: true, allowTaint: false });
+    // Scale 6 for high-resolution QR in batch PDF
+    const frontCanvas = await html2canvas(frontCard, { scale: 6, backgroundColor: '#fff', useCORS: true, allowTaint: false });
+    const backCanvas = await html2canvas(backCard, { scale: 6, backgroundColor: '#fff', useCORS: true, allowTaint: false });
 
     document.body.removeChild(container);
     return { frontCanvas, backCanvas };
