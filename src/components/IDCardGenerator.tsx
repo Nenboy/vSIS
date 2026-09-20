@@ -33,8 +33,9 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
   const issueDate = formatDate(student.date_registered);
   const expiryDate = formatDate(student.expiry_date);
 
+  // Shorter payload — only the student_id is needed for verification
   const qrData = useMemo(() => {
-    const payload = { id: student.student_id, matric: student.matric_no };
+    const payload = { id: student.student_id };
     const encoded = encodeURIComponent(JSON.stringify(payload));
     return `${window.location.origin}/verify?data=${encoded}`;
   }, [student]);
@@ -43,9 +44,9 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
     let cancelled = false;
     if (!settings?.card.includeQRCode) { setQrLoading(false); return; }
     setQrLoading(true);
-    // Higher resolution for sharper QR in PDF
+    // Error correction M (15%) — lower density, easier to decode from PDFs
     QRCode.toDataURL(qrData, {
-      errorCorrectionLevel: 'H',
+      errorCorrectionLevel: 'M',
       width: 800,
       margin: 1,
     }).then(url => {
@@ -91,7 +92,6 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
       await waitForImages(frontElement);
       await waitForImages(backElement);
 
-      // Scale 4 for high-resolution QR in PDF
       const frontCanvas = await html2canvas(frontElement, {
         scale: 4, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
       });
@@ -211,7 +211,8 @@ export default function IDCardGenerator({ student, onClose }: IDCardGeneratorPro
                 </div>
                 {showQR && (
                   <div className="flex flex-col items-center justify-center w-20">
-                    <div className="w-14 h-14 bg-white rounded-md shadow-sm flex items-center justify-center border border-gray-200">
+                    {/* Bigger QR container for better PDF decoding */}
+                    <div className="w-16 h-16 bg-white rounded-md shadow-sm flex items-center justify-center border border-gray-200">
                       {qrLoading ? (
                         <Loader2 className="h-5 w-5 animate-spin text-blue-700" />
                       ) : qrCodeUrl ? (

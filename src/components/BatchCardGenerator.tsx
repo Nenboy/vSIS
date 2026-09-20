@@ -65,7 +65,7 @@ export default function BatchCardGenerator() {
   const generateQRCode = async (data: string): Promise<string> => {
     try {
       return await QRCode.toDataURL(data, {
-        errorCorrectionLevel: 'H',
+        errorCorrectionLevel: 'M',
         width: 1200,
         margin: 1,
       });
@@ -131,7 +131,8 @@ export default function BatchCardGenerator() {
     const issueDate = formatDate(student.date_registered);
     const expiryDate = formatDate(student.expiry_date);
 
-    const payload = { id: student.student_id, matric: student.matric_no };
+    // Shorter payload — only student_id needed
+    const payload = { id: student.student_id };
     const encoded = encodeURIComponent(JSON.stringify(payload));
     const baseUrl = window.location.origin;
     const qrData = `${baseUrl}/verify?data=${encoded}`;
@@ -190,8 +191,8 @@ export default function BatchCardGenerator() {
             </div>
           </div>
           ${settings.card.includeQRCode ? `
-          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:72px;">
-            <div style="width:64px; height:64px; background:white; border-radius:4px; display:flex; align-items:center; justify-content:center; border:1px solid #e5e7eb;">
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:80px;">
+            <div style="width:72px; height:72px; background:white; border-radius:4px; display:flex; align-items:center; justify-content:center; border:1px solid #e5e7eb;">
               ${qrCodeUrl ? `<img src="${qrCodeUrl}" style="width:100%; height:100%; object-fit:contain;" />` : '<span style="font-size:6px;">QR</span>'}
             </div>
             <div style="font-size:6px; font-weight:600; color:#4b5563; margin-top:4px; text-align:center;">SCAN TO VERIFY</div>
@@ -259,7 +260,6 @@ export default function BatchCardGenerator() {
     await waitForImages(backCard);
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Scale 6 for high-resolution QR in batch PDF
     const frontCanvas = await html2canvas(frontCard, { scale: 6, backgroundColor: '#fff', useCORS: true, allowTaint: false });
     const backCanvas = await html2canvas(backCard, { scale: 6, backgroundColor: '#fff', useCORS: true, allowTaint: false });
 
